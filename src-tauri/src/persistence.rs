@@ -130,12 +130,21 @@ impl AppPersistence {
             return Ok(None);
         };
         let legacy_permission_onboarding = value.get("permission_onboarding_seen").is_none();
+        let legacy_cycle_shortcut = value.get("cycle_microphone_shortcut").is_none();
         let patch = serde_json::from_value::<SettingsPatch>(value)?;
         let mut settings = AppSettings::default();
         if legacy_permission_onboarding {
             settings.permission_onboarding_seen = true;
         }
         settings.apply_patch(patch);
+        // A newly introduced default must not reserve a chord already used
+        // by an existing modifier-only or keyed Dictation shortcut.
+        if legacy_cycle_shortcut && crate::dictation::active_dictation_shortcuts(&settings)
+            .iter().any(|(shortcut, _)| crate::dictation::dictation_shortcuts_overlap(
+                &settings.cycle_microphone_shortcut, shortcut).unwrap_or(true))
+        {
+            settings.cycle_microphone_shortcut.clear();
+        }
         Ok(Some(settings))
     }
 

@@ -9,6 +9,34 @@ use wakenote::settings::{
 };
 
 #[test]
+fn legacy_settings_keep_the_existing_dictation_chord_when_cycle_default_would_overlap() {
+    let tmp = tempfile::tempdir().unwrap();
+    let store = AppPersistence::new(tmp.path());
+    let mut legacy = serde_json::to_value(AppSettings::default()).unwrap();
+    legacy.as_object_mut().unwrap().remove("cycle_microphone_shortcut");
+    legacy["dictation_enabled"] = true.into();
+    legacy["dictation_shortcut"] = "ctrl+shift".into();
+    std::fs::write(tmp.path().join("settings.json"), serde_json::to_vec(&legacy).unwrap()).unwrap();
+    let loaded = store.load_settings().unwrap().unwrap();
+    assert_eq!(loaded.dictation_shortcut, "ctrl+shift");
+    assert!(loaded.cycle_microphone_shortcut.is_empty());
+}
+
+#[test]
+fn cycle_shortcut_round_trips_and_empty_means_disabled() {
+    let tmp = tempfile::tempdir().unwrap();
+    let store = AppPersistence::new(tmp.path());
+    let mut settings = AppSettings::default();
+    assert_eq!(settings.cycle_microphone_shortcut, "ctrl+shift+m");
+    settings.apply_patch(SettingsPatch { cycle_microphone_shortcut: Some("ctrl+alt+k".into()), ..Default::default() });
+    store.save_settings(&settings).unwrap();
+    assert_eq!(store.load_settings().unwrap().unwrap().cycle_microphone_shortcut, "ctrl+alt+k");
+    settings.apply_patch(SettingsPatch { cycle_microphone_shortcut: Some(String::new()), ..Default::default() });
+    store.save_settings(&settings).unwrap();
+    assert!(store.load_settings().unwrap().unwrap().cycle_microphone_shortcut.is_empty());
+}
+
+#[test]
 fn persistence_round_trips_settings_json() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let store = AppPersistence::new(tmp.path());

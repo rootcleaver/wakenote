@@ -466,6 +466,8 @@ fn ensure_audio_file_readable(path: &Path) -> Result<(), String> {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MicrophoneDevice {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transport_type: Option<u32>,
     pub id: String,
     pub label: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -4410,6 +4412,7 @@ pub fn microphone_devices_from_input_devices(
     devices
         .into_iter()
         .map(|device| MicrophoneDevice {
+            transport_type: None,
             fallback: device.id == "default" && selected_microphone != "default",
             id: device.id,
             label: device.label,

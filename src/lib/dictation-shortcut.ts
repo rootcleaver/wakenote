@@ -273,23 +273,25 @@ export function validateDictationHotkeys(
     | "dictation_toggle_shortcut"
     | "enhance_prompt_enabled"
     | "enhance_prompt_shortcut"
-  >,
+  > & Partial<Pick<AppSettings, "cycle_microphone_shortcut">>,
 ): void {
-  if (!settings.dictation_enabled) return;
-  const hotkeys = [["Hold-to-dictate hotkey", settings.dictation_shortcut]];
-  if (settings.dictation_toggle_shortcut) {
+  const hotkeys = settings.dictation_enabled
+    ? [["Hold-to-dictate hotkey", settings.dictation_shortcut]] : [];
+  if (settings.dictation_enabled && settings.dictation_toggle_shortcut) {
     hotkeys.push([
       "Toggle dictation hotkey",
       settings.dictation_toggle_shortcut,
     ]);
   }
-  if (settings.enhance_prompt_enabled) {
+  if (settings.dictation_enabled && settings.enhance_prompt_enabled) {
     normalizeEnhancedPromptShortcut(settings.enhance_prompt_shortcut);
     hotkeys.push([
       "Enhanced Prompt shortcut",
       settings.enhance_prompt_shortcut,
     ]);
   }
+  const cycle = normalizeCycleMicrophoneShortcut(settings.cycle_microphone_shortcut ?? "");
+  if (cycle) hotkeys.push(["Cycle Primary microphone shortcut", cycle]);
   for (const [index, [label, shortcut]] of hotkeys.entries()) {
     normalizeDictationShortcut(shortcut);
     for (const [otherLabel, other] of hotkeys.slice(0, index)) {
@@ -300,6 +302,15 @@ export function validateDictationHotkeys(
       }
     }
   }
+}
+
+export function normalizeCycleMicrophoneShortcut(raw: string): string {
+  if (!raw.trim()) return "";
+  const value = normalizeDictationShortcut(raw);
+  if (isModifierShortcut(value) || !value.includes("+")) {
+    throw new Error("Cycle microphone requires a modifier and a main key, such as Ctrl+Shift+M");
+  }
+  return value;
 }
 
 function physicalModifierFromCode(code: string): string | null {

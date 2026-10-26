@@ -177,6 +177,16 @@ The shelf follows System Settings and closes when the permission is granted, Sys
 | Activity | Per-day queue status, an all-dates warning/error review, newest/oldest ordering, retry, skip, safe running-job cancellation, bulk reprocessing, and Trash actions |
 | Settings | General behavior, Audio, Dictation, Models, Storage, Integrations, and Advanced sources |
 
+### Menu-bar audio controls
+
+The two small line graphs beside WakeNote's tray icon show the last eight seconds of Primary (`P`, blue) and Secondary (`S`, green) input without opening the app. Each uses its own microphone level; an unconfigured Secondary shows `S —`, and a stopped or disconnected slot shows `Off` instead of borrowing the other slot's trace. New samples arrive on the right and move left; higher means louder. A gold horizontal line marks the threshold. The trace updates four times per second with gentle display smoothing, while the title keeps the threshold (`T-54`, for example) instead of rapidly changing level numbers. `Off` means live input is stopped or paused. It follows **Settings › General › Show menu bar icon**. Click either graph to see both histories at a larger size and adjust the threshold or microphones. These display changes do not affect recording or voice detection.
+
+Click the meter to open **Audio controls**. Adjust the **Threshold** slider or select the **Primary microphone** and optional **Secondary microphone** directly. Changes use the same saved settings as **Settings › Audio**. The slider saves when released, after a keyboard adjustment, or when it loses focus. Current device names and connection state appear below the selectors. Press Escape, use the close button, or click outside to dismiss the panel.
+
+For a browser-only preview with fixture data, open `/quick-audio.html` on the Vite development server. Real menu-bar placement, audio levels, and device switching require native testing.
+
+Press **Ctrl+Shift+M** to cycle the Primary microphone through available physical inputs. System Default aliases, duplicate device identities, and iPhone Continuity microphones are skipped; Secondary keeps its selection. macOS transport identity excludes renamed wired and wireless iPhones before capture is attempted. iPhone inputs remain available for manual selection in Audio settings. A small notice on the pointer's display shows the selected device for 2.5 seconds without taking keyboard focus. If only one input is available, the notice identifies it without restarting capture. During active capture, inputs that fail to start are skipped; if no alternative starts, WakeNote attempts to restore the previous selection and shows an error. Change or disable the shortcut in **Settings › Audio › Cycle Primary microphone shortcut**; an empty value disables it. Conflicting Dictation shortcuts are rejected.
+
 ### Capture lifecycle
 
 The speech gate starts a chunk only after the input remains above Threshold for the Attack duration. It closes only after the input remains below Threshold for Release, while Pre-roll, Lead-in, and Post-roll protect the edges. Max Chunk splits continuous audio into bounded recordings.

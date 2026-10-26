@@ -607,6 +607,8 @@ pub struct AppSettings {
     /// Empty until configured, so existing hotkeys keep their behavior.
     #[serde(default)]
     pub dictation_toggle_shortcut: String,
+    #[serde(default = "default_cycle_microphone_shortcut")]
+    pub cycle_microphone_shortcut: String,
     #[serde(default = "default_dictation_language")]
     pub dictation_language: TranscriptionLanguage,
     #[serde(default)]
@@ -753,6 +755,7 @@ pub struct SettingsPatch {
     pub dictation_enabled: Option<bool>,
     pub dictation_shortcut: Option<String>,
     pub dictation_toggle_shortcut: Option<String>,
+    pub cycle_microphone_shortcut: Option<String>,
     pub dictation_language: Option<TranscriptionLanguage>,
     pub dictation_start_sound: Option<DictationCueSound>,
     pub dictation_stop_sound: Option<DictationCueSound>,
@@ -833,6 +836,10 @@ pub const fn default_merge_microphone_inputs() -> bool {
 
 pub fn default_dictation_shortcut() -> String {
     "alt+space".to_string()
+}
+
+pub fn default_cycle_microphone_shortcut() -> String {
+    "ctrl+shift+m".into()
 }
 
 pub fn default_meeting_model() -> String {
@@ -1553,6 +1560,9 @@ impl AppSettings {
         if let Some(value) = patch.dictation_toggle_shortcut {
             self.dictation_toggle_shortcut = value.trim().to_lowercase();
         }
+        if let Some(value) = patch.cycle_microphone_shortcut {
+            self.cycle_microphone_shortcut = value.trim().to_lowercase();
+        }
         if let Some(value) = patch.dictation_start_sound {
             self.dictation_start_sound = value;
         }
@@ -1776,6 +1786,7 @@ impl Default for AppSettings {
             dictation_enabled: false,
             dictation_shortcut: default_dictation_shortcut(),
             dictation_toggle_shortcut: String::new(),
+            cycle_microphone_shortcut: default_cycle_microphone_shortcut(),
             dictation_language: default_dictation_language(),
             dictation_start_sound: DictationCueSound::default(),
             dictation_stop_sound: DictationCueSound::default(),

@@ -30,6 +30,7 @@ pub mod permission_drag;
 pub mod permissions;
 pub mod persistence;
 pub mod queue;
+pub mod quick_audio;
 pub mod recorder;
 pub mod recorded_realtime;
 pub mod settings;

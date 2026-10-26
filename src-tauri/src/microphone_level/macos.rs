@@ -219,6 +219,15 @@ impl AudioObjectApi for SystemAudioObjectApi {
     }
 }
 
+/// Core Audio's transport survives renamed Continuity microphones.
+pub fn input_transport_type(uid: &str) -> Result<u32, MicrophoneLevelError> {
+    property_value(
+        object_id_for_uid(uid)?,
+        global_address(u32::from_be_bytes(*b"tran")),
+        "read device transport",
+    )
+}
+
 fn global_address(selector: u32) -> AudioObjectPropertyAddress {
     AudioObjectPropertyAddress {
         mSelector: selector,

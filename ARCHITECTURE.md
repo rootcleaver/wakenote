@@ -33,6 +33,16 @@ The primary routes are defined in `src/lib/navigation.ts`:
 
 `src/overlay/main.tsx` mounts `RecordingOverlay.tsx` into the separate Tauri overlay window. The backend emits Subtitle and dictation state events; the overlay never owns capture or transcription state. It is a click-through presentation surface, while the main window remains the control surface. One normalized style contract carries pixel padding, border, radius, and width/height bounds through settings, native window sizing, and CSS. Generation-tagged expiry timers give both previews and live text the configured lifetime without allowing stale timers to hide newer content.
 
+### Menu-bar audio controls
+
+`quick_audio.rs` adds an eight-second scrolling line graph alongside the existing tray icon. It samples the existing `AppStatus.level` four times per second, applies display-only exponential smoothing, and retains 32 points. Missing intervals become gaps, and stopping input clears the trace. Time runs left to right, input level runs bottom to top, and a gold horizontal line marks the threshold. The title keeps only the threshold to avoid flickering numbers and changing item widths. Its click opens a separate `quick-audio.html` React window, positioned within the clicked monitor's bounds. The existing tray's configured click actions remain available.
+
+`src/quick-audio/` polls capture state and the same in-memory trace through `quick_audio_history` only while visible, reuses the Audio settings microphone selectors, and writes through `update_settings`. Threshold dragging commits on release, key-up, or blur. A revision guard prevents an older poll from overwriting a completed settings write, and save errors remain visible across successful level polls. The panel hides on focus loss or Escape. Display smoothing never affects recording or voice detection. No additional audio stream or persistence format is introduced.
+
+`microphone_shortcut.rs` registers the configurable Primary input cycle chord independently of Dictation. It ignores key repeat, serializes switch requests, deduplicates physical devices by Core Audio UID, and uses the existing settings/runtime update path while retaining Secondary. A failed active-input start attempts to restore the previous selection, without overwriting a newer manual selection. Shortcut registration changes are reconciled with Dictation and rolled back if registration or persistence fails. Legacy settings retain their existing Dictation chord when the new default would overlap it. The separate, non-focusable `input-notice` window uses the same HTML entry and displays a generation-tagged 2.5-second notice, so a previous timer cannot hide a later switch.
+
+Hardware input-volume reads, writes, and observation run off the UI thread through `input_level_query.rs`. A shared gate admits one in-flight call and a 600ms deadline releases the caller if Core Audio stops responding. The gate remains held until the actual hardware call exits, preventing repeated polls from accumulating blocked workers. Read failures return explicit unavailable-volume metadata; they do not claim that capture hardware is absent.
+
 ### Tauri command and event bridge
 
 `src-tauri/src/main.rs` builds the Tauri application, manages shared runtime state, registers commands, starts background workers, and emits events. `src/lib/tauri-client.ts` is the frontend adapter for those commands and provides a compatible in-memory backend for browser development.
@@ -241,6 +251,7 @@ wakenote/
 │   ├── components/             Product pages, settings, shell, and UI primitives
 │   ├── lib/                    State, Tauri adapter, fixtures, and domain helpers
 │   ├── overlay/                Separate caption/dictation window
+│   ├── quick-audio/            Menu-bar audio control window
 │   └── styles/                 Shared tokens and page/component styles
 └── src-tauri/
     ├── Cargo.toml              Rust dependencies and optional asr-sherpa feature

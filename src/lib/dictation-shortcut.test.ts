@@ -4,7 +4,24 @@ import {
   dictationShortcutFromKeyboardEvent,
   formatDictationShortcut,
   normalizeDictationShortcut,
+  normalizeCycleMicrophoneShortcut,
+  validateDictationHotkeys,
 } from "./dictation-shortcut";
+import { defaultSettings } from "./app-state";
+
+describe("Primary microphone cycle shortcut", () => {
+  it("normalizes a keyed chord and supports disabling, while rejecting modifier-only or unmodified keys", () => {
+    expect(normalizeCycleMicrophoneShortcut(" Shift + Control + M ")).toBe("ctrl+shift+m");
+    expect(normalizeCycleMicrophoneShortcut(" ")).toBe("");
+    expect(() => normalizeCycleMicrophoneShortcut("ctrl+shift")).toThrow();
+    expect(() => normalizeCycleMicrophoneShortcut("m")).toThrow();
+  });
+  it("rejects overlap with an enabled Dictation chord and permits disabling cycle", () => {
+    const settings = { ...defaultSettings(), dictation_enabled: true, dictation_shortcut: "ctrl+shift" };
+    expect(() => validateDictationHotkeys(settings)).toThrow(/Cycle Primary microphone.*overlaps/);
+    expect(() => validateDictationHotkeys({ ...settings, cycle_microphone_shortcut: "" })).not.toThrow();
+  });
+});
 
 function keyEvent(
   code: string,

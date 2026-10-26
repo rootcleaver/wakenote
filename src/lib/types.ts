@@ -218,6 +218,7 @@ export interface AppSettings {
   dictation_enabled: boolean;
   dictation_shortcut: string;
   dictation_toggle_shortcut: string;
+  cycle_microphone_shortcut: string;
   dictation_language: TranscriptionLanguage;
   dictation_start_sound: DictationCueSound;
   dictation_stop_sound: DictationCueSound;
@@ -304,6 +305,7 @@ export interface SourceCaptureStatus {
 }
 
 export interface MicrophoneDevice {
+  transport_type?: number | null;
   id: string;
   label: string;
   core_audio_uid?: string | null;

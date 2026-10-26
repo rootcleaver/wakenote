@@ -4,6 +4,7 @@ import { open, save } from "@tauri-apps/plugin-dialog";
 import {
   normalizeDictationShortcut,
   normalizeEnhancedPromptShortcut,
+  normalizeCycleMicrophoneShortcut,
   validateDictationHotkeys,
 } from "./dictation-shortcut";
 import { modelSupportsReprocessing } from "./models";
@@ -844,6 +845,9 @@ export async function saveSettingsPatch(
       safePatch.enhance_prompt_shortcut = normalizeEnhancedPromptShortcut(
         safePatch.enhance_prompt_shortcut,
       );
+    }
+    if (typeof safePatch.cycle_microphone_shortcut === "string") {
+      safePatch.cycle_microphone_shortcut = normalizeCycleMicrophoneShortcut(safePatch.cycle_microphone_shortcut);
     }
     let queue = browserSnapshot.queue ?? emptyQueue();
     if (

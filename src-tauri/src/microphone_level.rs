@@ -10,6 +10,10 @@ pub mod macos;
 pub mod macos {
     use super::{DeviceVolume, MicrophoneLevelError, MicrophoneVolumeBackend, SystemInputDevice};
 
+    pub fn input_transport_type(_uid: &str) -> Result<u32, MicrophoneLevelError> {
+        Err(MicrophoneLevelError::UnsupportedPlatform)
+    }
+
     #[derive(Debug, Clone, Copy, Default)]
     pub struct CoreAudioInputVolumeBackend;
 

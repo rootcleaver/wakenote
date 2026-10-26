@@ -127,6 +127,8 @@ use wakenote::voice_leveling::{
 };
 
 mod app_updater;
+mod microphone_shortcut;
+mod input_level_query;
 
 type BackendState = Arc<Mutex<AppBackend>>;
 type DictionaryFileState = Arc<Mutex<DictionaryFileStore>>;
@@ -1963,6 +1965,7 @@ fn suspend_dictation_shortcut(
         .0
         .store(true, Ordering::SeqCst);
     cancel_dictation_runtime(&app)?;
+    microphone_shortcut::register(&app, "")?;
     for (shortcut, _) in active_dictation_shortcuts(&settings) {
         unregister_dictation_shortcut(&app, &shortcut)?;
     }
@@ -1976,6 +1979,7 @@ fn suspend_dictation_shortcut(
 #[tauri::command]
 fn resume_dictation_shortcut(app: AppHandle, state: State<'_, BackendState>) -> Result<(), String> {
     let settings = state.lock().map_err(|error| error.to_string())?.settings();
+    microphone_shortcut::register(&app, &settings.cycle_microphone_shortcut)?;
     for (shortcut, mode) in active_dictation_shortcuts(&settings) {
         if !is_dictation_shortcut_registered(&app, &shortcut)? {
             register_dictation_shortcut_for_mode(&app, &shortcut, mode)?;
@@ -3433,6 +3437,9 @@ fn update_settings(
 ) -> Result<AppSettings, String> {
     let _update_activity = RESTART_GATE.activity()?;
     normalize_dictation_patch(&mut patch)?;
+    if let Some(raw) = patch.cycle_microphone_shortcut.as_mut() {
+        *raw = microphone_shortcut::normalize(raw)?;
+    }
     let dictionary_was_patched = patch.dictionary.is_some();
     let (
         previous_settings,
@@ -3458,14 +3465,14 @@ fn update_settings(
         cancel_dictation_runtime(&app)?;
     }
     apply_launch_at_login_action(&app, launch_at_login_action)?;
-    reconcile_dictation_shortcut_registration(&app, &previous_settings, &candidate_settings)?;
+    microphone_shortcut::reconcile(&app, &previous_settings, &candidate_settings)?;
 
     let (settings, live_event_handler, live_events) = {
         let mut backend = state.lock().map_err(|error| error.to_string())?;
         let settings = match backend.try_update_settings(patch) {
             Ok(settings) => settings,
             Err(error) => {
-                let shortcut_rollback = reconcile_dictation_shortcut_registration(
+                let shortcut_rollback = microphone_shortcut::reconcile(
                     &app,
                     &candidate_settings,
                     &previous_settings,
@@ -3964,6 +3971,9 @@ async fn resolve_microphones_for_ui(settings: AppSettings) -> Vec<MicrophoneDevi
                         })
                         .map(|candidate| candidate.uid.clone())
                 };
+                device.transport_type = device.core_audio_uid.as_deref().and_then(|uid| {
+                    wakenote::microphone_level::macos::input_transport_type(uid).ok()
+                });
             }
             let _ = sender.send(devices);
         });
@@ -3995,6 +4005,7 @@ fn stable_microphone_options(
             continue;
         }
         devices.push(MicrophoneDevice {
+            transport_type: None,
             id: configured.id.clone(),
             label: configured.label.clone(),
             core_audio_uid: configured.core_audio_uid.clone(),
@@ -4009,6 +4020,7 @@ fn fallback_microphones(settings: &AppSettings) -> Vec<MicrophoneDevice> {
     stable_microphone_options(
         settings,
         vec![MicrophoneDevice {
+            transport_type: None,
             id: "default".to_string(),
             label: "System Default".to_string(),
             core_audio_uid: None,
@@ -4101,24 +4113,36 @@ fn input_levels_for_entries(
 }
 
 #[tauri::command]
-fn microphone_input_levels(
+async fn microphone_input_levels(
     backend: State<'_, BackendState>,
     levels: State<'_, MicrophoneLevelState>,
+    gate: State<'_, input_level_query::HardwareQueryGate>,
 ) -> Result<Vec<MicrophoneInputLevel>, String> {
     let entries = backend
         .lock()
         .map_err(|error| error.to_string())?
         .settings()
         .capture_microphones;
-    Ok(input_levels_for_entries(levels.as_ref(), &entries))
+    let fallback = entries.clone();
+    let levels = levels.inner().clone();
+    Ok(gate.run(move || Ok(input_levels_for_entries(levels.as_ref(), &entries))).await
+        .unwrap_or_else(|error| unavailable_input_levels(&fallback, error)))
+}
+
+fn unavailable_input_levels(entries: &[CaptureMicrophoneEntry], error: String) -> Vec<MicrophoneInputLevel> {
+    entries.iter().map(|entry| MicrophoneInputLevel {
+        device_id: entry.id.clone(), label: entry.label.clone(), volume_percent: None,
+        writable: false, available: false, error: Some(error.clone()),
+    }).collect()
 }
 
 #[tauri::command]
-fn set_microphone_input_volume(
+async fn set_microphone_input_volume(
     device_id: String,
     volume_percent: u8,
     backend: State<'_, BackendState>,
     levels: State<'_, MicrophoneLevelState>,
+    gate: State<'_, input_level_query::HardwareQueryGate>,
 ) -> Result<Vec<MicrophoneInputLevel>, String> {
     let entries = backend
         .lock()
@@ -4128,11 +4152,13 @@ fn set_microphone_input_volume(
     let configured = entries
         .iter()
         .find(|entry| entry.id == device_id)
+        .cloned()
         .ok_or_else(|| format!("Unknown configured microphone: {device_id}"))?;
-    levels
-        .set_volume(configured, volume_percent.min(100))
-        .map_err(|error| error.user_message())?;
-    Ok(input_levels_for_entries(levels.as_ref(), &entries))
+    let levels = levels.inner().clone();
+    gate.run(move || {
+        levels.set_volume(&configured, volume_percent.min(100)).map_err(|error| error.user_message())?;
+        Ok(input_levels_for_entries(levels.as_ref(), &entries))
+    }).await
 }
 
 fn spawn_microphone_input_level_observer(
@@ -4140,6 +4166,7 @@ fn spawn_microphone_input_level_observer(
     backend: BackendState,
     levels: MicrophoneLevelState,
 ) {
+    let query_gate = app.state::<input_level_query::HardwareQueryGate>().inner().clone();
     tauri::async_runtime::spawn(async move {
         let mut previous = Vec::new();
         let mut interval = tokio::time::interval(Duration::from_millis(250));
@@ -4152,7 +4179,10 @@ fn spawn_microphone_input_level_observer(
                     continue;
                 }
             };
-            let next = input_levels_for_entries(levels.as_ref(), &entries);
+            let fallback = entries.clone();
+            let levels_for_query = levels.clone();
+            let next = query_gate.run(move || Ok(input_levels_for_entries(levels_for_query.as_ref(), &entries))).await
+                .unwrap_or_else(|error| unavailable_input_levels(&fallback, error));
             if wakenote::microphone_level::levels_changed(&previous, &next) {
                 previous = next.clone();
                 let _ = app.emit(MICROPHONE_INPUT_LEVELS_CHANGED_EVENT, next);
@@ -9023,6 +9053,7 @@ fn main() {
             app.manage(dictation_state);
             app.manage(dictation_shortcut_dispatcher);
             app.manage(DictationShortcutSuspension::default());
+            app.manage(microphone_shortcut::Runtime::default());
             app.manage(modifier_shortcut_state.clone());
             app.manage(live_transcriber_state.clone());
             app.manage(AutoTypeState::default());
@@ -9041,6 +9072,7 @@ fn main() {
             app.manage(transcription_cost_state);
             app.manage(llm_run_state);
             app.manage(microphone_level_state.clone());
+            app.manage(input_level_query::HardwareQueryGate::default());
             app.manage(voice_leveling_policy);
             spawn_microphone_input_level_observer(
                 app.handle().clone(),
@@ -9069,6 +9101,12 @@ fn main() {
                         format!("[dictation] startup registration failed mode={mode:?}: {error}"));
                     eprintln!("[dictation] startup registration failed mode={mode:?}: {error}");
                 }
+            }
+
+            if let Err(error) = microphone_shortcut::validate(&initial_settings_for_runtime)
+                .and_then(|_| microphone_shortcut::register(app.handle(), &initial_settings_for_runtime.cycle_microphone_shortcut))
+            {
+                eprintln!("[microphone-cycle] startup shortcut registration failed: {error}");
             }
 
             let startup_recovery_cutoff = chrono::Utc::now();
@@ -9122,6 +9160,10 @@ fn main() {
             ));
             let tray_menu_items =
                 setup_tray(app, initial_settings.as_ref(), initial_status.as_ref())?;
+            wakenote::quick_audio::setup(app.handle())?;
+            if let Some((settings, status)) = initial_settings.as_ref().zip(initial_status.as_ref()) {
+                wakenote::quick_audio::update(app.handle(), settings, status);
+            }
             if let Some(settings) = initial_settings.as_ref() {
                 let _ = apply_launch_at_login_preference(app.handle(), settings.launch_at_login);
             }
@@ -9202,6 +9244,10 @@ fn main() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            wakenote::quick_audio::hide_quick_audio,
+            wakenote::quick_audio::quick_audio_history,
+            microphone_shortcut::cycle_primary_microphone,
+            microphone_shortcut::microphone_cycle_notice,
             app_updater::check_for_update,
             app_updater::update_install_readiness,
             app_updater::open_update_release,
@@ -9611,6 +9657,7 @@ fn next_tray_presentation_update(
 }
 
 fn update_tray_presentation(app: &tauri::AppHandle, settings: &AppSettings, status: &AppStatus) {
+    wakenote::quick_audio::update(app, settings, status);
     let app_handle = app.clone();
     let dictation_stage = app
         .try_state::<DictationState>()
@@ -11968,6 +12015,7 @@ mod tests {
         let devices = stable_microphone_options(
             &settings,
             vec![MicrophoneDevice {
+                transport_type: None,
                 id: "input-2-boya-cm40".to_string(),
                 label: "BOYA CM40".to_string(),
                 core_audio_uid: Some("uid-active".to_string()),
@@ -11995,6 +12043,7 @@ mod tests {
             &settings,
             vec![
                 MicrophoneDevice {
+                    transport_type: None,
                     id: "input-1-boya-cm40".to_string(),
                     label: "BOYA CM40".to_string(),
                     core_audio_uid: Some("uid-a".to_string()),
@@ -12002,6 +12051,7 @@ mod tests {
                     fallback: false,
                 },
                 MicrophoneDevice {
+                    transport_type: None,
                     id: "input-2-boya-cm40".to_string(),
                     label: "BOYA CM40".to_string(),
                     core_audio_uid: Some("uid-b".to_string()),

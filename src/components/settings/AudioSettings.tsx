@@ -47,6 +47,7 @@ import type { SettingsActions } from "./types";
 import { TranslationControls } from "./TranslationControls";
 import { LanguageHintsControl } from "@/components/LanguageHintsControl";
 import { modelSupportsMultipleLanguageHints } from "@/lib/models";
+import { SettingsTextEditor } from "./SettingsTextEditor";
 
 const durationFields = [
   ["attack_ms", "Attack", 50, 2_000],
@@ -154,6 +155,17 @@ export function AudioSettings({
           microphones={microphones}
           onChange={(capture_microphones) =>
             actions.onPatch({ capture_microphones })
+          }
+        />
+        <SettingsTextEditor
+          label="Cycle Primary microphone shortcut"
+          description="Press to switch to the next available microphone and show its name. Default: Ctrl+Shift+M. Leave empty to disable. Secondary stays selected."
+          value={settings.cycle_microphone_shortcut}
+          defaultValue="ctrl+shift+m"
+          multiline={false}
+          allowEmpty
+          onSave={(cycle_microphone_shortcut) =>
+            (actions.onSavePatch ?? actions.onPatch)({ cycle_microphone_shortcut })
           }
         />
         <SettingSwitch
@@ -470,7 +482,7 @@ function PermissionSetting({
   );
 }
 
-function MicrophoneSelectors({
+export function MicrophoneSelectors({
   value,
   microphones,
   onChange,
