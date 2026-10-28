@@ -304,6 +304,7 @@ fn cancel_text_transform(
     Ok(())
 }
 
+#[derive(Debug, PartialEq)]
 enum AutoTypeUpdate {
     Started,
     Partial(String),
@@ -311,6 +312,28 @@ enum AutoTypeUpdate {
     Confirmed(String),
     Final(String),
     Failed,
+}
+
+/// Realtime partials carry provider-confirmed words when the provider has them.
+fn realtime_auto_type_update(partial: &RealtimePartial) -> AutoTypeUpdate {
+    if partial.confirmed_text.is_empty() {
+        AutoTypeUpdate::Partial(partial.text.clone())
+    } else {
+        AutoTypeUpdate::Confirmed(partial.confirmed_text.clone())
+    }
+}
+
+/// Updates that wait for the whole chunk under these settings. The voice gate decides
+/// per final chunk, so it holds both partials and confirmed words. Final-only holds
+/// partials; confirmed words are final already, so they still go through.
+fn auto_type_update_is_held(update: &AutoTypeUpdate, settings: &AppSettings) -> bool {
+    match update {
+        AutoTypeUpdate::Partial(_) => {
+            settings.auto_transcript_input_final_only || settings.voice_gate_enabled
+        }
+        AutoTypeUpdate::Confirmed(_) => settings.voice_gate_enabled,
+        _ => false,
+    }
 }
 
 fn clear_auto_type(app: &AppHandle) {
@@ -352,24 +375,17 @@ fn dispatch_auto_type(
             session.clear();
             return;
         }
+        let held = auto_type_update_is_held(&update, &settings);
         let observed = match update {
+            _ if held => Ok(()),
             AutoTypeUpdate::Started => session.start(chunk_id),
-            // Final-only mode types exactly the final transcript the Capture list shows.
-            // The voice gate decides per final chunk, so it implies final-only.
-            AutoTypeUpdate::Partial(_)
-                if settings.auto_transcript_input_final_only || settings.voice_gate_enabled =>
-            {
-                Ok(())
-            }
             AutoTypeUpdate::Partial(text) => {
                 session.partial(chunk_id, &text);
                 Ok(())
             }
-            // Confirmed words are final already, so they are typed as they arrive even in
-            // final-only mode. The voice gate still waits for the whole chunk's verdict.
-            AutoTypeUpdate::Confirmed(_) if settings.voice_gate_enabled => Ok(()),
             AutoTypeUpdate::Confirmed(text) => {
-                session.confirm(chunk_id, &DictionaryContext::from_settings(&settings).correct(&text));
+                let dictionary = DictionaryContext::from_settings(&settings);
+                session.confirm(chunk_id, &text, |raw| dictionary.correct(raw));
                 Ok(())
             }
             AutoTypeUpdate::Final(text) => {
@@ -7386,11 +7402,7 @@ fn emit_realtime_partial(app: &AppHandle, backend_state: &BackendState, partial:
         &partial.source_key,
         partial.microphone_slot,
         partial.chunk_id,
-        if partial.confirmed_text.is_empty() {
-            AutoTypeUpdate::Partial(partial.text.clone())
-        } else {
-            AutoTypeUpdate::Confirmed(partial.confirmed_text.clone())
-        },
+        realtime_auto_type_update(&partial),
     );
     if partial.source_key.starts_with("meeting:") {
         return;
@@ -10097,6 +10109,51 @@ fn patch_from_tray(app: &tauri::AppHandle, patch: impl FnOnce(AppSettings) -> Se
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn realtime_partial(text: &str, confirmed: &str) -> RealtimePartial {
+        RealtimePartial {
+            source_key: "microphone".into(),
+            source_label: "Mic".into(),
+            microphone_slot: Some(MicrophoneSlot::Primary),
+            chunk_id: 7,
+            text: text.into(),
+            confirmed_text: confirmed.into(),
+        }
+    }
+
+    #[test]
+    fn realtime_partials_route_confirmed_words_when_the_provider_has_them() {
+        assert_eq!(
+            realtime_auto_type_update(&realtime_partial("hello wor", "")),
+            AutoTypeUpdate::Partial("hello wor".into())
+        );
+        assert_eq!(
+            realtime_auto_type_update(&realtime_partial("hello wor", "hello")),
+            AutoTypeUpdate::Confirmed("hello".into())
+        );
+        // Same combined text, more of it confirmed: the confirmed words still move on.
+        assert_eq!(
+            realtime_auto_type_update(&realtime_partial("hello wor", "hello wor")),
+            AutoTypeUpdate::Confirmed("hello wor".into())
+        );
+    }
+
+    #[test]
+    fn voice_gate_holds_partials_and_confirmed_words_but_final_only_holds_partials_only() {
+        let mut settings = AppSettings::default();
+        let partial = AutoTypeUpdate::Partial("a".into());
+        let confirmed = AutoTypeUpdate::Confirmed("a".into());
+        let final_text = AutoTypeUpdate::Final("a".into());
+        assert!(!auto_type_update_is_held(&partial, &settings));
+        assert!(!auto_type_update_is_held(&confirmed, &settings));
+        settings.auto_transcript_input_final_only = true;
+        assert!(auto_type_update_is_held(&partial, &settings));
+        assert!(!auto_type_update_is_held(&confirmed, &settings));
+        settings.voice_gate_enabled = true;
+        assert!(auto_type_update_is_held(&partial, &settings));
+        assert!(auto_type_update_is_held(&confirmed, &settings));
+        assert!(!auto_type_update_is_held(&final_text, &settings));
+    }
     use chrono::TimeZone;
     use wakenote::settings::{DictionaryEntry, SourceAutoPromptEntry};
 

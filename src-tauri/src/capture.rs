@@ -537,7 +537,8 @@ fn offset_from_base_ms(base_time: DateTime<Utc>, captured_at: DateTime<Utc>) -> 
 
 /// Auto-type microphone chunks are capped at five seconds; give a phrase up to
 /// three more seconds to reach a pause so the cut does not split a word. The
-/// hard limit (8 s plus pre-roll) stays inside the ten-second live decoder window.
+/// hard limit (8 s from the chunk start, pre-roll included) stays inside the ten-second
+/// live decoder window.
 const AUTO_TYPE_ROLLOVER_GRACE_MS: u64 = 3_000;
 
 /// Auto-type reshapes microphone chunks only for models that type from partial
