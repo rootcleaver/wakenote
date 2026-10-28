@@ -1,7 +1,7 @@
 {
   "name": "wakenote",
   "license": "MIT",
-  "version": "0.261028.1",
+  "version": "0.261028.2",
   "private": true,
   "type": "module",
   "scripts": {
