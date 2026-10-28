@@ -1,6 +1,6 @@
 [package]
 name = "wakenote"
-version = "0.261026.3"
+version = "0.261028.1"
 edition = "2024"
 
 [lib]
