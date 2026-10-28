@@ -21,7 +21,7 @@ use crate::transcription::{TranscriptionExecution, TranscriptionUsage};
 const PROVIDER: &str = "Soniox";
 const SONIOX_REALTIME_URL: &str = "wss://stt-rt.soniox.com/transcribe-websocket";
 const SONIOX_REALTIME_MODEL: &str = "stt-rt-v5";
-const SONIOX_REALTIME_MODEL_ID: &str = "soniox-realtime-v5";
+pub const SONIOX_REALTIME_MODEL_ID: &str = "soniox-realtime-v5";
 const COMMIT_COMPLETION_WAIT: Duration = Duration::from_secs(15);
 const RECORDED_FRAME_MS: usize = 250;
 
@@ -352,6 +352,7 @@ async fn run_connected_session<S>(
                                 microphone_slot: request.microphone_slot,
                                 chunk_id: request.chunk_id,
                                 text: transcript.text(),
+                                confirmed_text: transcript.final_text(),
                             });
                         }
                         if response.finished {

@@ -8,6 +8,7 @@ use chrono::{DateTime, Duration, Utc};
 use crate::audio::{GateConfig, GateDecision, SpeechGate, dbfs_from_samples};
 use crate::recorder::{ChunkSource, RecordedChunk, Recorder, RecorderError, RecordingRequest};
 use crate::settings::AppSettings;
+use crate::soniox_realtime::SONIOX_REALTIME_MODEL_ID;
 
 /// How often the live transcription tap fires while a chunk is recording.
 /// Smaller values = snappier preview, larger values = lighter CPU. The live
@@ -407,9 +408,7 @@ impl CaptureProcessor {
     }
 
     fn rollover_overlap_samples(&self) -> Vec<f32> {
-        if self.config.settings.auto_transcript_input_enabled
-            && self.config.source == ChunkSource::Microphone
-        {
+        if auto_type_shapes_chunks(&self.config.settings, self.config.source) {
             return Vec::new();
         }
         let overlap_count =
@@ -541,8 +540,17 @@ fn offset_from_base_ms(base_time: DateTime<Utc>, captured_at: DateTime<Utc>) -> 
 /// hard limit (8 s plus pre-roll) stays inside the ten-second live decoder window.
 const AUTO_TYPE_ROLLOVER_GRACE_MS: u64 = 3_000;
 
+/// Auto-type reshapes microphone chunks only for models that type from partial
+/// agreement. Soniox real-time confirms words as they arrive, so with it the
+/// chunks follow the same rules as with auto-type off.
+fn auto_type_shapes_chunks(settings: &AppSettings, source: ChunkSource) -> bool {
+    settings.auto_transcript_input_enabled
+        && source == ChunkSource::Microphone
+        && settings.effective_auto_type_model() != SONIOX_REALTIME_MODEL_ID
+}
+
 fn rollover_grace_ms(config: &CaptureProcessorConfig) -> u64 {
-    if config.settings.auto_transcript_input_enabled && config.source == ChunkSource::Microphone {
+    if auto_type_shapes_chunks(&config.settings, config.source) {
         AUTO_TYPE_ROLLOVER_GRACE_MS
     } else {
         0
@@ -551,15 +559,18 @@ fn rollover_grace_ms(config: &CaptureProcessorConfig) -> u64 {
 
 fn processor_config(config: &CaptureControllerConfig) -> CaptureProcessorConfig {
     let mut settings = config.settings.clone();
-    if settings.auto_transcript_input_enabled && config.source == ChunkSource::Microphone {
+    if auto_type_shapes_chunks(&settings, config.source) {
         // Keep each hypothesis inside the ten-second live decoder window, even
         // when the archival chunk setting is several minutes. Settings on disk stay unchanged.
         settings.max_chunk_ms = settings.max_chunk_ms.min(5_000);
         settings.min_chunk_ms = settings.min_chunk_ms.min(1_000);
         settings.release_ms = settings.release_ms.min(750);
-        if !settings.auto_transcript_input_model.is_empty() {
-            settings.selected_model = settings.auto_transcript_input_model.clone();
-        }
+    }
+    if settings.auto_transcript_input_enabled
+        && config.source == ChunkSource::Microphone
+        && !settings.auto_transcript_input_model.is_empty()
+    {
+        settings.selected_model = settings.auto_transcript_input_model.clone();
     }
     CaptureProcessorConfig {
         save_root: config.save_root.clone(),
@@ -720,6 +731,9 @@ mod tests {
         );
         assert_eq!(rollover_grace_ms(&config(false, ChunkSource::Microphone)), 0);
         assert_eq!(rollover_grace_ms(&config(true, ChunkSource::System)), 0);
+        let mut soniox = config(true, ChunkSource::Microphone);
+        soniox.settings.auto_transcript_input_model = SONIOX_REALTIME_MODEL_ID.into();
+        assert_eq!(rollover_grace_ms(&soniox), 0);
     }
 
     #[test]

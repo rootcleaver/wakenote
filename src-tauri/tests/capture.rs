@@ -64,6 +64,42 @@ fn auto_type_bounds_microphone_chunks_and_snapshots_its_model_without_changing_a
     assert_eq!(configured.max_chunk_ms, 30_000);
 }
 
+#[test]
+fn soniox_auto_type_keeps_archival_chunk_rules_but_still_uses_its_model() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut configured = settings();
+    configured.auto_transcript_input_enabled = true;
+    configured.auto_transcript_input_model = "soniox-realtime-v5".into();
+    configured.transcription_enabled = true;
+    let mut mic = CaptureController::new(CaptureControllerConfig {
+        save_root: tmp.path().to_path_buf(),
+        settings: configured.clone(),
+        sample_rate: 10,
+        device_id: "mic".into(),
+        device_name: "Mic".into(),
+        used_fallback_device: false,
+        base_time: Utc.with_ymd_and_hms(2026, 9, 6, 0, 0, 0).unwrap(),
+        app_version: "test".into(),
+        source: ChunkSource::Microphone,
+        source_label: None,
+    });
+    // Nine seconds of continuous speech: no auto-type five-second cut.
+    for _ in 0..90 {
+        mic.process_samples(&[0.8], 100).unwrap();
+    }
+    assert!(mic.completed_chunks().is_empty());
+    // Silence ends the chunk by the archival release rule, as with auto-type off.
+    for _ in 0..30 {
+        mic.process_samples(&[0.0], 100).unwrap();
+    }
+    assert_eq!(mic.completed_chunks().len(), 1);
+    let metadata: ChunkMetadata =
+        serde_json::from_slice(&std::fs::read(&mic.completed_chunks()[0].metadata_path).unwrap())
+            .unwrap();
+    assert_eq!(metadata.model_id, "soniox-realtime-v5");
+    assert_eq!(metadata.max_chunk_ms, 30_000);
+}
+
 fn wav_sample_count(path: &std::path::Path) -> usize {
     let reader = hound::WavReader::open(path).expect("wav");
     reader.into_samples::<i16>().count()

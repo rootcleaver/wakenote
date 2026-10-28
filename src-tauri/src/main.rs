@@ -307,6 +307,8 @@ fn cancel_text_transform(
 enum AutoTypeUpdate {
     Started,
     Partial(String),
+    /// Provider-confirmed words of the chunk so far.
+    Confirmed(String),
     Final(String),
     Failed,
 }
@@ -363,6 +365,13 @@ fn dispatch_auto_type(
                 session.partial(chunk_id, &text);
                 Ok(())
             }
+            // Confirmed words are final already, so they are typed as they arrive even in
+            // final-only mode. The voice gate still waits for the whole chunk's verdict.
+            AutoTypeUpdate::Confirmed(_) if settings.voice_gate_enabled => Ok(()),
+            AutoTypeUpdate::Confirmed(text) => {
+                session.confirm(chunk_id, &DictionaryContext::from_settings(&settings).correct(&text));
+                Ok(())
+            }
             AutoTypeUpdate::Final(text) => {
                 session.finish(chunk_id, &text);
                 Ok(())
@@ -380,6 +389,12 @@ fn dispatch_auto_type(
                 )
             })
         });
+        for id in session.take_dropped() {
+            append_runtime_debug_log(
+                &settings,
+                format!("[auto-type] final text changed confirmed words; skipped the rest of chunk {id}"),
+            );
+        }
         if let Err(error) = result {
             session.clear();
             append_runtime_debug_log(&settings, format!("[auto-type] {error}"));
@@ -7371,7 +7386,11 @@ fn emit_realtime_partial(app: &AppHandle, backend_state: &BackendState, partial:
         &partial.source_key,
         partial.microphone_slot,
         partial.chunk_id,
-        AutoTypeUpdate::Partial(partial.text.clone()),
+        if partial.confirmed_text.is_empty() {
+            AutoTypeUpdate::Partial(partial.text.clone())
+        } else {
+            AutoTypeUpdate::Confirmed(partial.confirmed_text.clone())
+        },
     );
     if partial.source_key.starts_with("meeting:") {
         return;

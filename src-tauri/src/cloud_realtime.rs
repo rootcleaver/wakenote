@@ -155,6 +155,9 @@ pub struct RealtimePartial {
     pub microphone_slot: Option<MicrophoneSlot>,
     pub chunk_id: u64,
     pub text: String,
+    /// Leading words the provider marked final; they are never revised.
+    /// Empty when the provider has no such notion.
+    pub confirmed_text: String,
 }
 
 pub type RealtimePartialCallback = Arc<dyn Fn(RealtimePartial) + Send + Sync>;

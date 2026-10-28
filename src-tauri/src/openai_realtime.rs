@@ -348,6 +348,7 @@ async fn run_connected_session<S>(
                             microphone_slot: request.microphone_slot,
                             chunk_id: request.chunk_id,
                             text: transcript.text(),
+                            confirmed_text: String::new(),
                         });
                         if committed_path.is_some() {
                             final_deadline = Some(Instant::now() + PARTIAL_COMPLETION_WAIT);
