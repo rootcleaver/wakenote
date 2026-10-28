@@ -156,6 +156,39 @@
   white-space: pre-wrap;
 }
 
+[data-slot="live-transcript-list"] [data-slot="speaker-tag"],
+[data-slot="live-transcript-list"] [data-slot="voice-enroll"] {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--muted-foreground);
+  font-size: var(--text-micro);
+  line-height: var(--leading-micro);
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+[data-slot="live-transcript-list"] [data-slot="speaker-tag"][data-speaker="other"] {
+  border-color: var(--destructive);
+  color: var(--destructive);
+}
+
+[data-slot="live-transcript-list"] li:has([data-speaker="other"]) [data-slot="transcript-text"] {
+  opacity: 0.6;
+}
+
+[data-slot="live-transcript-list"] [data-slot="voice-enroll"] {
+  background: transparent;
+  cursor: pointer;
+}
+
+[data-slot="live-transcript-list"] [data-slot="voice-enroll"]:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
 .live-transcript-empty {
   min-height: 108px;
   padding: 12px;

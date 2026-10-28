@@ -48,4 +48,5 @@ pub mod transcription;
 pub mod transcription_cost;
 pub mod updater;
 pub mod trash;
+pub mod voice_gate;
 pub mod voice_leveling;

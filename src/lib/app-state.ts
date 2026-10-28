@@ -184,6 +184,9 @@ export function defaultSettings(): AppSettings {
     auto_transcript_input_enabled: false,
     auto_transcript_input_trailing_space: false,
     auto_transcript_input_model: "",
+    auto_transcript_input_final_only: false,
+    voice_gate_enabled: false,
+    voice_gate_threshold: 0.45,
     live_transcription_webhook: {
       enabled: false,
       endpoint_url: "",

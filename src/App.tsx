@@ -331,6 +331,8 @@ export default function App() {
               audio_path: string;
               text: string;
               recorded_at?: string;
+              speaker?: "me" | "other" | "unknown" | null;
+              speaker_score?: number | null;
             };
             return {
               type: "final",
@@ -341,6 +343,8 @@ export default function App() {
               audio_path: data.audio_path,
               text: data.text,
               recorded_at: data.recorded_at,
+              speaker: data.speaker ?? null,
+              speaker_score: data.speaker_score ?? null,
             };
           },
         ],

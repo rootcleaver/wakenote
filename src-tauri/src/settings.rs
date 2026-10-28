@@ -576,6 +576,15 @@ pub struct AppSettings {
     pub auto_transcript_input_trailing_space: bool,
     #[serde(default)]
     pub auto_transcript_input_model: String,
+    /// Type only the final transcript (the same text the Capture list shows),
+    /// instead of typing stable partial words ahead of the final result.
+    #[serde(default)]
+    pub auto_transcript_input_final_only: bool,
+    /// Skip auto-type for chunks whose voice does not match the enrolled speaker.
+    #[serde(default)]
+    pub voice_gate_enabled: bool,
+    #[serde(default = "default_voice_gate_threshold")]
+    pub voice_gate_threshold: f32,
     #[serde(default)]
     pub text_transform_model: String,
     #[serde(default)]
@@ -737,6 +746,9 @@ pub struct SettingsPatch {
     pub auto_transcript_input_enabled: Option<bool>,
     pub auto_transcript_input_trailing_space: Option<bool>,
     pub auto_transcript_input_model: Option<String>,
+    pub auto_transcript_input_final_only: Option<bool>,
+    pub voice_gate_enabled: Option<bool>,
+    pub voice_gate_threshold: Option<f32>,
     pub text_transform_model: Option<String>,
     pub subtitle_translation_enabled: Option<bool>,
     pub subtitle_translation_language: Option<TranscriptionLanguage>,
@@ -1076,6 +1088,10 @@ fn source_id_is_known(settings: &AppSettings, source_id: &str) -> bool {
             .custom_sources
             .iter()
             .any(|source| source.id == source_id)
+}
+
+fn default_voice_gate_threshold() -> f32 {
+    crate::voice_gate::DEFAULT_THRESHOLD
 }
 
 pub fn expand_user_path(path: impl AsRef<str>) -> PathBuf {
@@ -1543,6 +1559,17 @@ impl AppSettings {
         if let Some(value) = patch.auto_transcript_input_model {
             self.auto_transcript_input_model = value.trim().to_string();
         }
+        if let Some(value) = patch.auto_transcript_input_final_only {
+            self.auto_transcript_input_final_only = value;
+        }
+        if let Some(value) = patch.voice_gate_enabled {
+            self.voice_gate_enabled = value;
+        }
+        if let Some(value) = patch.voice_gate_threshold
+            && value.is_finite()
+        {
+            self.voice_gate_threshold = value.clamp(0.1, 0.95);
+        }
         if let Some(value) = patch.dictation_enabled {
             self.dictation_enabled = value;
         }
@@ -1772,6 +1799,9 @@ impl Default for AppSettings {
             auto_transcript_input_enabled: false,
             auto_transcript_input_trailing_space: false,
             auto_transcript_input_model: String::new(),
+            auto_transcript_input_final_only: false,
+            voice_gate_enabled: false,
+            voice_gate_threshold: default_voice_gate_threshold(),
             text_transform_model: String::new(),
             subtitle_translation_enabled: false,
             subtitle_translation_language: default_translation_language(),
@@ -2238,6 +2268,36 @@ mod tests {
 
         assert!(settings.auto_transcript_input_enabled);
         assert!(settings.auto_transcript_input_trailing_space);
+    }
+
+    #[test]
+    fn patch_sets_auto_type_final_only() {
+        let mut settings = AppSettings::default();
+        assert!(!settings.auto_transcript_input_final_only);
+        settings.apply_patch(SettingsPatch {
+            auto_transcript_input_final_only: Some(true),
+            ..Default::default()
+        });
+        assert!(settings.auto_transcript_input_final_only);
+    }
+
+    #[test]
+    fn patch_sets_voice_gate_with_clamped_threshold() {
+        let mut settings = AppSettings::default();
+        assert!(!settings.voice_gate_enabled);
+        assert!((settings.voice_gate_threshold - 0.45).abs() < 1e-6);
+        settings.apply_patch(SettingsPatch {
+            voice_gate_enabled: Some(true),
+            voice_gate_threshold: Some(2.0),
+            ..Default::default()
+        });
+        assert!(settings.voice_gate_enabled);
+        assert!((settings.voice_gate_threshold - 0.95).abs() < 1e-6);
+        settings.apply_patch(SettingsPatch {
+            voice_gate_threshold: Some(f32::NAN),
+            ..Default::default()
+        });
+        assert!((settings.voice_gate_threshold - 0.95).abs() < 1e-6);
     }
 
     #[test]

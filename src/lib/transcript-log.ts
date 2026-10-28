@@ -26,7 +26,12 @@ export interface TranscriptEntry {
   recorded_at: string;
   audio_path: string | null;
   error: string | null;
+  /** Voice gate verdict on the final chunk; absent when the gate is off. */
+  speaker?: SpeakerKind | null;
+  speaker_score?: number | null;
 }
+
+export type SpeakerKind = "me" | "other" | "unknown";
 
 export type TranscriptEvent =
   | (SourceIdentity & { type: "started"; chunk_id: number; started_at: string })
@@ -43,6 +48,8 @@ export type TranscriptEvent =
       audio_path: string;
       text: string;
       recorded_at?: string;
+      speaker?: SpeakerKind | null;
+      speaker_score?: number | null;
     } & SourceIdentity)
   | ({
       type: "failed";
@@ -142,6 +149,8 @@ export function reduceTranscriptLog(
             recorded_at: recordedAt,
             audio_path: event.audio_path,
             error: null,
+            speaker: event.speaker ?? null,
+            speaker_score: event.speaker_score ?? null,
           };
         },
       );

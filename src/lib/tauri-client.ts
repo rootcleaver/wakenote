@@ -270,6 +270,50 @@ export async function pressedModifierShortcut(): Promise<string | null> {
   return invoke<string | null>("pressed_modifier_shortcut");
 }
 
+export interface VoiceGateStatus {
+  model_ready: boolean;
+  runtime_available: boolean;
+  enrolled: number;
+}
+
+let browserVoiceGate: VoiceGateStatus = {
+  model_ready: false,
+  runtime_available: false,
+  enrolled: 0,
+};
+
+export async function loadVoiceGateStatus(): Promise<VoiceGateStatus> {
+  if (!isTauriRuntime()) return browserVoiceGate;
+  return invoke<VoiceGateStatus>("voice_gate_status");
+}
+
+export async function downloadVoiceGateModel(): Promise<VoiceGateStatus> {
+  if (!isTauriRuntime()) {
+    browserVoiceGate = { ...browserVoiceGate, model_ready: true };
+    return browserVoiceGate;
+  }
+  return invoke<VoiceGateStatus>("voice_gate_download_model");
+}
+
+export async function enrollVoiceGate(audioPath: string): Promise<VoiceGateStatus> {
+  if (!isTauriRuntime()) {
+    browserVoiceGate = {
+      ...browserVoiceGate,
+      enrolled: browserVoiceGate.enrolled + 1,
+    };
+    return browserVoiceGate;
+  }
+  return invoke<VoiceGateStatus>("voice_gate_enroll", { audioPath });
+}
+
+export async function resetVoiceGate(): Promise<VoiceGateStatus> {
+  if (!isTauriRuntime()) {
+    browserVoiceGate = { ...browserVoiceGate, enrolled: 0 };
+    return browserVoiceGate;
+  }
+  return invoke<VoiceGateStatus>("voice_gate_reset");
+}
+
 export async function loadDictationState(): Promise<DictationStatePayload> {
   if (!isTauriRuntime()) {
     return browserDictationState;

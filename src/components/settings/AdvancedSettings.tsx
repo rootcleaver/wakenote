@@ -1,5 +1,6 @@
 import { CustomSourceSettings } from "./CustomSourceSettings";
 import { LiveWebhookSettings } from "./LiveWebhookSettings";
+import { VoiceGateSettings } from "./VoiceGateSettings";
 import {
   SettingSelect,
   SettingSwitch,
@@ -74,6 +75,15 @@ export function AdvancedSettings({
           }
         />
         <SettingSwitch
+          label="Type final transcript only"
+          checked={settings.auto_transcript_input_final_only}
+          disabled={!settings.auto_transcript_input_enabled}
+          description="Types the same text the Capture list shows, once each phrase is final. Slower than typing stable partial words, but never stops on model corrections."
+          onCheckedChange={(auto_transcript_input_final_only) =>
+            onPatch({ auto_transcript_input_final_only })
+          }
+        />
+        <SettingSwitch
           label="Add trailing space after auto-type"
           checked={settings.auto_transcript_input_trailing_space}
           disabled={!settings.auto_transcript_input_enabled}
@@ -87,6 +97,8 @@ export function AdvancedSettings({
           }
         />
       </SettingsCard>
+
+      <VoiceGateSettings settings={settings} onPatch={onPatch} />
 
       <SettingsCard
         title="Transcript filtering"

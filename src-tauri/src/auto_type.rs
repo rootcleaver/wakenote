@@ -95,3 +95,50 @@ impl AutoTypeSession {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn typed(session: &mut AutoTypeSession, trailing_space: bool) -> Result<String, String> {
+        let mut out = String::new();
+        session.flush(trailing_space, |text| {
+            out.push_str(text);
+            Ok(())
+        })?;
+        Ok(out)
+    }
+
+    #[test]
+    fn stable_partial_then_revised_final_stops_phrase() {
+        let mut session = AutoTypeSession::default();
+        session.start(1).unwrap();
+        session.partial(1, "내일 회의는 세 시");
+        session.partial(1, "내일 회의는 세 시에 해");
+        assert_eq!(typed(&mut session, false).unwrap(), "내일 회의는 세 ");
+        session.finish(1, "내일 회의는 3시에 해요.");
+        assert!(typed(&mut session, false).is_err());
+    }
+
+    #[test]
+    fn final_only_types_the_whole_final_once() {
+        // Final-only mode never feeds partials, so the final is typed as one piece.
+        let mut session = AutoTypeSession::default();
+        session.start(1).unwrap();
+        assert_eq!(typed(&mut session, false).unwrap(), "");
+        session.finish(1, "내일 회의는 3시에 해요.");
+        assert_eq!(typed(&mut session, true).unwrap(), "내일 회의는 3시에 해요. ");
+        assert_eq!(typed(&mut session, true).unwrap(), "");
+    }
+
+    #[test]
+    fn final_only_keeps_chunk_order() {
+        let mut session = AutoTypeSession::default();
+        session.start(1).unwrap();
+        session.start(2).unwrap();
+        session.finish(2, "둘째");
+        assert_eq!(typed(&mut session, false).unwrap(), "");
+        session.finish(1, "첫째");
+        assert_eq!(typed(&mut session, true).unwrap(), "첫째 둘째 ");
+    }
+}

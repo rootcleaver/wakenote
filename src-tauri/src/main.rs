@@ -351,6 +351,13 @@ fn dispatch_auto_type(
         }
         let observed = match update {
             AutoTypeUpdate::Started => session.start(chunk_id),
+            // Final-only mode types exactly the final transcript the Capture list shows.
+            // The voice gate decides per final chunk, so it implies final-only.
+            AutoTypeUpdate::Partial(_)
+                if settings.auto_transcript_input_final_only || settings.voice_gate_enabled =>
+            {
+                Ok(())
+            }
             AutoTypeUpdate::Partial(text) => {
                 session.partial(chunk_id, &text);
                 Ok(())
@@ -896,6 +903,9 @@ struct LiveFinalPayload {
     audio_path: String,
     recorded_at: String,
     text: String,
+    /// Voice gate verdict: "me" | "other" | "unknown"; absent when the gate is off.
+    speaker: Option<wakenote::voice_gate::SpeakerKind>,
+    speaker_score: Option<f32>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -8146,6 +8156,120 @@ fn emit_file_stream_partial(
     }
 }
 
+/// Voice gate verdict for a finished microphone chunk; `None` when the gate is off
+/// or the chunk is not from the Primary/merged microphone.
+fn voice_gate_verdict(
+    app: &AppHandle,
+    settings: &AppSettings,
+    source_key: &str,
+    slot: Option<MicrophoneSlot>,
+    audio_path: &Path,
+) -> Option<wakenote::voice_gate::SpeakerVerdict> {
+    if !settings.voice_gate_enabled
+        || !source_key.starts_with("microphone")
+        || slot == Some(MicrophoneSlot::Secondary)
+    {
+        return None;
+    }
+    let app_data_dir = app.path().app_data_dir().ok()?;
+    let started = Instant::now();
+    let verdict = wakenote::voice_gate::judge(
+        &app_data_dir,
+        &expand_user_path(&settings.model_directory),
+        audio_path,
+        settings.voice_gate_threshold,
+    );
+    append_runtime_debug_log(
+        settings,
+        format!(
+            "[voice-gate] kind={:?} score={:?} reason={:?} took_ms={} path={}",
+            verdict.kind,
+            verdict.score,
+            verdict.reason,
+            started.elapsed().as_millis(),
+            audio_path.display()
+        ),
+    );
+    Some(verdict)
+}
+
+#[tauri::command]
+async fn voice_gate_status(
+    app: AppHandle,
+    state: State<'_, BackendState>,
+) -> Result<wakenote::voice_gate::VoiceGateStatus, String> {
+    let model_dir = {
+        let backend = state.lock().map_err(|error| error.to_string())?;
+        expand_user_path(&backend.settings().model_directory)
+    };
+    let app_data_dir = app.path().app_data_dir().map_err(|error| error.to_string())?;
+    Ok(wakenote::voice_gate::status(&app_data_dir, &model_dir))
+}
+
+#[tauri::command]
+async fn voice_gate_download_model(
+    app: AppHandle,
+    state: State<'_, BackendState>,
+) -> Result<wakenote::voice_gate::VoiceGateStatus, String> {
+    let model_dir = {
+        let backend = state.lock().map_err(|error| error.to_string())?;
+        expand_user_path(&backend.settings().model_directory)
+    };
+    let app_data_dir = app.path().app_data_dir().map_err(|error| error.to_string())?;
+    tauri::async_runtime::spawn_blocking(move || -> Result<wakenote::voice_gate::VoiceGateStatus, String> {
+        wakenote::voice_gate::download_model(&model_dir)?;
+        Ok(wakenote::voice_gate::status(&app_data_dir, &model_dir))
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+async fn voice_gate_enroll(
+    app: AppHandle,
+    state: State<'_, BackendState>,
+    audio_path: String,
+) -> Result<wakenote::voice_gate::VoiceGateStatus, String> {
+    let (model_dir, save_root) = {
+        let backend = state.lock().map_err(|error| error.to_string())?;
+        let settings = backend.settings();
+        (
+            expand_user_path(&settings.model_directory),
+            expand_user_path(&settings.save_root),
+        )
+    };
+    let app_data_dir = app.path().app_data_dir().map_err(|error| error.to_string())?;
+    let audio = PathBuf::from(&audio_path)
+        .canonicalize()
+        .map_err(|error| format!("Recording not found: {error}"))?;
+    let root = save_root
+        .canonicalize()
+        .map_err(|error| format!("Save folder not found: {error}"))?;
+    if !audio.starts_with(&root) {
+        return Err("Only recordings inside the WakeNote save folder can be enrolled.".into());
+    }
+    tauri::async_runtime::spawn_blocking(move || -> Result<wakenote::voice_gate::VoiceGateStatus, String> {
+        wakenote::voice_gate::enroll(&app_data_dir, &model_dir, &audio)?;
+        Ok(wakenote::voice_gate::status(&app_data_dir, &model_dir))
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+async fn voice_gate_reset(
+    app: AppHandle,
+    state: State<'_, BackendState>,
+) -> Result<wakenote::voice_gate::VoiceGateStatus, String> {
+    let model_dir = {
+        let backend = state.lock().map_err(|error| error.to_string())?;
+        expand_user_path(&backend.settings().model_directory)
+    };
+    let app_data_dir = app.path().app_data_dir().map_err(|error| error.to_string())?;
+    wakenote::voice_gate::reset_profile(&app_data_dir)?;
+    Ok(wakenote::voice_gate::status(&app_data_dir, &model_dir))
+}
+
 fn emit_outcome_to_frontend(
     app: &AppHandle,
     backend_state: &BackendState,
@@ -8234,13 +8358,25 @@ fn emit_outcome_to_frontend(
                     publish_overlay_caption_snapshot(app, snapshot, "live final caption");
                 }
             }
+            let verdict = voice_gate_verdict(
+                app,
+                &settings_for_log,
+                &source_identity.source_key,
+                source_identity.microphone_slot,
+                audio_path,
+            );
             if let Some(id) = chunk_id {
+                let other_speaker = verdict.as_ref().is_some_and(|v| v.is_other());
                 dispatch_auto_type(
                     app,
                     &source_identity.source_key,
                     source_identity.microphone_slot,
                     id,
-                    AutoTypeUpdate::Final(text.clone()),
+                    if other_speaker {
+                        AutoTypeUpdate::Failed
+                    } else {
+                        AutoTypeUpdate::Final(text.clone())
+                    },
                 );
             }
             if let Err(error) = app.emit(
@@ -8253,6 +8389,8 @@ fn emit_outcome_to_frontend(
                     audio_path: audio_path_str,
                     recorded_at,
                     text,
+                    speaker: verdict.as_ref().map(|v| v.kind.clone()),
+                    speaker_score: verdict.as_ref().and_then(|v| v.score),
                 },
             ) {
                 eprintln!("[wakenote] WARN emit final failed: {error}");
@@ -9303,6 +9441,10 @@ fn main() {
             open_permission_drag_shelf,
             recent_transcripts,
             recent_dictations,
+            voice_gate_status,
+            voice_gate_download_model,
+            voice_gate_enroll,
+            voice_gate_reset,
             transcript_days,
             transcripts_for_day,
             export_all_transcript_days,

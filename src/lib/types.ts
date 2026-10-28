@@ -205,6 +205,9 @@ export interface AppSettings {
   auto_transcript_input_enabled: boolean;
   auto_transcript_input_trailing_space: boolean;
   auto_transcript_input_model: string;
+  auto_transcript_input_final_only: boolean;
+  voice_gate_enabled: boolean;
+  voice_gate_threshold: number;
   text_transform_model: string;
   subtitle_translation_enabled: boolean;
   subtitle_translation_language: TranscriptionLanguage;

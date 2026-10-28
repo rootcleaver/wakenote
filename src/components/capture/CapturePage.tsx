@@ -195,6 +195,7 @@ export function CapturePage({
           <LiveTranscriptList
             entries={transcriptEntries}
             liveActive={status.live_input_active}
+            voiceGate={settings.voice_gate_enabled}
           />
         </CardContent>
       </Card>
