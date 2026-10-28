@@ -405,10 +405,17 @@ fn dispatch_auto_type(
                 )
             })
         });
-        for id in session.take_dropped() {
+        for (id, outcome) in session.take_corrected_finals() {
             append_runtime_debug_log(
                 &settings,
-                format!("[auto-type] final text changed confirmed words; skipped the rest of chunk {id}"),
+                match outcome {
+                    wakenote::auto_type::CorrectedFinal::RestTyped => format!(
+                        "[auto-type] chunk {id}: final text corrects words already typed; typed the remaining words, the correction stays in the saved transcript"
+                    ),
+                    wakenote::auto_type::CorrectedFinal::EndSkipped => format!(
+                        "[auto-type] chunk {id}: final text could not be lined up with the typed words; its untyped end was skipped"
+                    ),
+                },
             );
         }
         if let Err(error) = result {
