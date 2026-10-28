@@ -222,6 +222,7 @@ export interface AppSettings {
   dictation_shortcut: string;
   dictation_toggle_shortcut: string;
   cycle_microphone_shortcut: string;
+  auto_type_toggle_shortcut: string;
   dictation_language: TranscriptionLanguage;
   dictation_start_sound: DictationCueSound;
   dictation_stop_sound: DictationCueSound;

@@ -12,6 +12,7 @@ import {
   openTranscriptFolder,
   rebuildTranscriptDayIndex,
   regenerateTranscript,
+  enrollVoiceGate,
   startLlmReport,
   trashTranscripts,
 } from "../lib/tauri-client";
@@ -39,6 +40,7 @@ export function TranscriptsPanel({
   selectedModelId = "",
   autoPlayNext = false,
   openrouterKeyConfigured = false,
+  voiceGate = false,
   onOpenReports,
   translation,
   initialSourceFilter,
@@ -49,6 +51,8 @@ export function TranscriptsPanel({
   selectedModelId?: string;
   autoPlayNext?: boolean;
   openrouterKeyConfigured?: boolean;
+  /** Voice gate on: offer "This is me" on past microphone clips. */
+  voiceGate?: boolean;
   onOpenReports?: () => void;
   translation?: TranslationPreferences;
   initialSourceFilter?: string;
@@ -389,6 +393,13 @@ export function TranscriptsPanel({
 
   return (
     <TranscriptsView
+      onEnrollVoice={
+        voiceGate
+          ? async (entry) => {
+              if (entry.audio_path) await enrollVoiceGate(entry.audio_path);
+            }
+          : undefined
+      }
       initialSourceFilter={initialSourceFilter}
       initialActiveDay={initialActiveDay}
       translation={translation}

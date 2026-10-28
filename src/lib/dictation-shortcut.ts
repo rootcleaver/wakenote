@@ -273,7 +273,7 @@ export function validateDictationHotkeys(
     | "dictation_toggle_shortcut"
     | "enhance_prompt_enabled"
     | "enhance_prompt_shortcut"
-  > & Partial<Pick<AppSettings, "cycle_microphone_shortcut">>,
+  > & Partial<Pick<AppSettings, "cycle_microphone_shortcut" | "auto_type_toggle_shortcut">>,
 ): void {
   const hotkeys = settings.dictation_enabled
     ? [["Hold-to-dictate hotkey", settings.dictation_shortcut]] : [];
@@ -292,6 +292,8 @@ export function validateDictationHotkeys(
   }
   const cycle = normalizeCycleMicrophoneShortcut(settings.cycle_microphone_shortcut ?? "");
   if (cycle) hotkeys.push(["Cycle Primary microphone shortcut", cycle]);
+  const autoType = normalizeAutoTypeToggleShortcut(settings.auto_type_toggle_shortcut ?? "");
+  if (autoType) hotkeys.push(["Auto-type toggle shortcut", autoType]);
   for (const [index, [label, shortcut]] of hotkeys.entries()) {
     normalizeDictationShortcut(shortcut);
     for (const [otherLabel, other] of hotkeys.slice(0, index)) {
@@ -309,6 +311,15 @@ export function normalizeCycleMicrophoneShortcut(raw: string): string {
   const value = normalizeDictationShortcut(raw);
   if (isModifierShortcut(value) || !value.includes("+")) {
     throw new Error("Cycle microphone requires a modifier and a main key, such as Ctrl+Shift+M");
+  }
+  return value;
+}
+
+export function normalizeAutoTypeToggleShortcut(raw: string): string {
+  if (!raw.trim()) return "";
+  const value = normalizeDictationShortcut(raw);
+  if (isModifierShortcut(value) || !value.includes("+")) {
+    throw new Error("Auto-type toggle requires a modifier and a main key, such as Ctrl+Shift+A");
   }
   return value;
 }

@@ -248,6 +248,7 @@ export function TranscriptsView({
   initialSourceFilter = ALL_SOURCE_FILTER,
   initialActiveDay = null,
   today = new Date(),
+  onEnrollVoice,
 }: {
   days: TranscriptDay[];
   translation?: TranslationPreferences;
@@ -299,7 +300,26 @@ export function TranscriptsView({
   initialSourceFilter?: string;
   initialActiveDay?: string | null;
   today?: Date;
+  /** Add this past microphone clip to the enrolled voice (voice gate). */
+  onEnrollVoice?: (entry: RecentTranscript) => Promise<void>;
 }) {
+  const [enrolledVoicePaths, setEnrolledVoicePaths] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
+  const [voiceEnrollError, setVoiceEnrollError] = useState<string | null>(null);
+  const enrollVoice = onEnrollVoice
+    ? async (entry: RecentTranscript) => {
+        try {
+          await onEnrollVoice(entry);
+          setEnrolledVoicePaths((previous) =>
+            new Set(previous).add(entry.transcript_path),
+          );
+          setVoiceEnrollError(null);
+        } catch (error) {
+          setVoiceEnrollError(String(error));
+        }
+      }
+    : undefined;
   const todayDay = formatLocalDay(today);
 
   const availableDays = useMemo(() => {
@@ -1253,6 +1273,11 @@ export function TranscriptsView({
             onOpenFolder={onOpenMergedAudioFolder}
           />
         ) : null}
+        {voiceEnrollError ? (
+          <p className="transcript-voice-enroll-error" role="alert">
+            Voice enroll: {voiceEnrollError}
+          </p>
+        ) : null}
         {hasEntries ? (
           <div
             data-slot="transcript-list"
@@ -1281,6 +1306,12 @@ export function TranscriptsView({
                 canOpenContextMenu={canOpenContextMenu}
                 canRegenerateFromContext={canRegenerateFromContext}
                 visibilityMutating={visibilityMutating}
+                voiceEnrolled={enrolledVoicePaths.has(entry.transcript_path)}
+                onEnrollVoice={
+                  enrollVoice && canEnrollVoice(entry)
+                    ? () => void enrollVoice(entry)
+                    : undefined
+                }
               />
             ))}
           </div>
@@ -1573,6 +1604,8 @@ function TranscriptEntryRow({
   onPointerEnterSelect,
   onSelectionChange,
   visibilityMutating,
+  voiceEnrolled = false,
+  onEnrollVoice,
 }: {
   canOpenContextMenu: boolean;
   translation?: TranslationPreferences;
@@ -1589,6 +1622,8 @@ function TranscriptEntryRow({
   onPointerEnterSelect: (path: string) => void;
   onSelectionChange: (path: string, selected: boolean) => void;
   visibilityMutating: boolean;
+  voiceEnrolled?: boolean;
+  onEnrollVoice?: () => void;
 }) {
   const timestamp = formatLocalTimestamp(entry.recorded_at);
   const regenerateAvailable = Boolean(
@@ -1685,6 +1720,20 @@ function TranscriptEntryRow({
         >
           {isPlaying ? <Pause /> : <Play />}
         </Button>
+        {onEnrollVoice ? (
+          <Button
+            className="transcript-entry__voice-enroll"
+            data-slot="voice-enroll"
+            disabled={voiceEnrolled}
+            onClick={onEnrollVoice}
+            size="sm"
+            title="Add this clip to your enrolled voice"
+            type="button"
+            variant="outline"
+          >
+            {voiceEnrolled ? "Enrolled" : "This is me"}
+          </Button>
+        ) : null}
         {folderAvailable ? (
           <Button
             aria-label={folderLabel}
@@ -1700,6 +1749,15 @@ function TranscriptEntryRow({
         ) : null}
       </div>
     </div>
+  );
+}
+
+/** Past Primary/merged microphone clips with audio can be enrolled as "me". */
+export function canEnrollVoice(entry: RecentTranscript): boolean {
+  return (
+    Boolean(entry.audio_path) &&
+    (entry.source ?? "microphone") === "microphone" &&
+    entry.microphone_slot !== "secondary"
   );
 }
 

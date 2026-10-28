@@ -1,5 +1,6 @@
 import { CustomSourceSettings } from "./CustomSourceSettings";
 import { LiveWebhookSettings } from "./LiveWebhookSettings";
+import { SettingsTextEditor } from "./SettingsTextEditor";
 import { VoiceGateSettings } from "./VoiceGateSettings";
 import {
   SettingSelect,
@@ -94,6 +95,16 @@ export function AdvancedSettings({
           }
           onCheckedChange={(auto_transcript_input_trailing_space) =>
             onPatch({ auto_transcript_input_trailing_space })
+          }
+        />
+        <SettingsTextEditor
+          label="Auto-type on/off shortcut"
+          description="Press anywhere to turn auto-type on or off and show the new state. Use a modifier and a key, such as Ctrl+Shift+A. Leave empty to disable."
+          value={settings.auto_type_toggle_shortcut}
+          multiline={false}
+          allowEmpty
+          onSave={(auto_type_toggle_shortcut) =>
+            (onSavePatch ?? onPatch)({ auto_type_toggle_shortcut })
           }
         />
       </SettingsCard>

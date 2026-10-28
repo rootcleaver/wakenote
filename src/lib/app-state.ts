@@ -207,6 +207,7 @@ export function defaultSettings(): AppSettings {
     dictation_shortcut: "alt+space",
     dictation_toggle_shortcut: "",
     cycle_microphone_shortcut: "ctrl+shift+m",
+    auto_type_toggle_shortcut: "",
     dictation_language: "auto",
     dictation_start_sound: "original",
     dictation_stop_sound: "original",

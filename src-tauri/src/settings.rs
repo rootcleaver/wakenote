@@ -618,6 +618,9 @@ pub struct AppSettings {
     pub dictation_toggle_shortcut: String,
     #[serde(default = "default_cycle_microphone_shortcut")]
     pub cycle_microphone_shortcut: String,
+    /// Global shortcut that turns auto-type on or off. Empty = disabled.
+    #[serde(default)]
+    pub auto_type_toggle_shortcut: String,
     #[serde(default = "default_dictation_language")]
     pub dictation_language: TranscriptionLanguage,
     #[serde(default)]
@@ -768,6 +771,7 @@ pub struct SettingsPatch {
     pub dictation_shortcut: Option<String>,
     pub dictation_toggle_shortcut: Option<String>,
     pub cycle_microphone_shortcut: Option<String>,
+    pub auto_type_toggle_shortcut: Option<String>,
     pub dictation_language: Option<TranscriptionLanguage>,
     pub dictation_start_sound: Option<DictationCueSound>,
     pub dictation_stop_sound: Option<DictationCueSound>,
@@ -1590,6 +1594,9 @@ impl AppSettings {
         if let Some(value) = patch.cycle_microphone_shortcut {
             self.cycle_microphone_shortcut = value.trim().to_lowercase();
         }
+        if let Some(value) = patch.auto_type_toggle_shortcut {
+            self.auto_type_toggle_shortcut = value.trim().to_lowercase();
+        }
         if let Some(value) = patch.dictation_start_sound {
             self.dictation_start_sound = value;
         }
@@ -1817,6 +1824,7 @@ impl Default for AppSettings {
             dictation_shortcut: default_dictation_shortcut(),
             dictation_toggle_shortcut: String::new(),
             cycle_microphone_shortcut: default_cycle_microphone_shortcut(),
+            auto_type_toggle_shortcut: String::new(),
             dictation_language: default_dictation_language(),
             dictation_start_sound: DictationCueSound::default(),
             dictation_stop_sound: DictationCueSound::default(),
@@ -2268,6 +2276,22 @@ mod tests {
 
         assert!(settings.auto_transcript_input_enabled);
         assert!(settings.auto_transcript_input_trailing_space);
+    }
+
+    #[test]
+    fn auto_type_toggle_shortcut_defaults_off_and_patches_normalized() {
+        let mut settings = AppSettings::default();
+        assert!(settings.auto_type_toggle_shortcut.is_empty());
+        settings.apply_patch(SettingsPatch {
+            auto_type_toggle_shortcut: Some(" Ctrl+Shift+A ".into()),
+            ..Default::default()
+        });
+        assert_eq!(settings.auto_type_toggle_shortcut, "ctrl+shift+a");
+        settings.apply_patch(SettingsPatch {
+            auto_type_toggle_shortcut: Some(String::new()),
+            ..Default::default()
+        });
+        assert!(settings.auto_type_toggle_shortcut.is_empty());
     }
 
     #[test]

@@ -432,7 +432,7 @@ pub fn microphone_cycle_notice(app: AppHandle) -> Notice {
         .unwrap_or_default()
 }
 
-fn show_notice(app: &AppHandle, label: String, detail: String, error: bool) {
+pub(crate) fn show_notice(app: &AppHandle, label: String, detail: String, error: bool) {
     let runtime = app.state::<Runtime>();
     let sequence = runtime.generation.fetch_add(1, Ordering::SeqCst) + 1;
     let payload = Notice {

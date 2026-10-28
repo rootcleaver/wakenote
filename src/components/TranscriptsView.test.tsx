@@ -23,6 +23,7 @@ import {
   transcriptSourceFilterOptions,
   transcriptVisibilityTargetsForContextMenu,
   weekStartFor,
+  canEnrollVoice,
 } from "./TranscriptsView";
 
 function transcript(overrides: Partial<RecentTranscript>): RecentTranscript {
@@ -1142,5 +1143,30 @@ describe("nextPlayableTranscriptPath", () => {
   it("returns null when the current path is absent or null", () => {
     expect(nextPlayableTranscriptPath(entries, "/missing.txt")).toBeNull();
     expect(nextPlayableTranscriptPath(entries, null)).toBeNull();
+  });
+});
+
+describe("voice gate enrollment from past transcripts", () => {
+  it("only offers Primary or merged microphone clips with audio", () => {
+    expect(canEnrollVoice(transcript({}))).toBe(true);
+    expect(canEnrollVoice(transcript({ source: "microphone", microphone_slot: "primary" }))).toBe(true);
+    expect(canEnrollVoice(transcript({ microphone_slot: "secondary" }))).toBe(false);
+    expect(canEnrollVoice(transcript({ source: "system" }))).toBe(false);
+    expect(canEnrollVoice(transcript({ audio_path: null }))).toBe(false);
+  });
+
+  it("shows This is me only when enrollment is wired", () => {
+    const props = {
+      today: new Date("2026-05-10T12:00:00+09:00"),
+      days: [{ day: "2026-05-10", count: 1 }],
+      entriesByDay: new Map([["2026-05-10", [transcript({ text: "my phrase" })]]]),
+    };
+    const withGate = renderToStaticMarkup(
+      <TranscriptsView {...props} onEnrollVoice={async () => {}} />,
+    );
+    expect(withGate).toContain("my phrase");
+    expect(withGate).toContain("This is me");
+    const withoutGate = renderToStaticMarkup(<TranscriptsView {...props} />);
+    expect(withoutGate).not.toContain("This is me");
   });
 });

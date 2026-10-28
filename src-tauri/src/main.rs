@@ -128,6 +128,7 @@ use wakenote::voice_leveling::{
 
 mod app_updater;
 mod microphone_shortcut;
+mod autotype_shortcut;
 mod input_level_query;
 
 type BackendState = Arc<Mutex<AppBackend>>;
@@ -1976,6 +1977,7 @@ fn suspend_dictation_shortcut(
         .store(true, Ordering::SeqCst);
     cancel_dictation_runtime(&app)?;
     microphone_shortcut::register(&app, "")?;
+    autotype_shortcut::register(&app, "")?;
     for (shortcut, _) in active_dictation_shortcuts(&settings) {
         unregister_dictation_shortcut(&app, &shortcut)?;
     }
@@ -1990,6 +1992,7 @@ fn suspend_dictation_shortcut(
 fn resume_dictation_shortcut(app: AppHandle, state: State<'_, BackendState>) -> Result<(), String> {
     let settings = state.lock().map_err(|error| error.to_string())?.settings();
     microphone_shortcut::register(&app, &settings.cycle_microphone_shortcut)?;
+    autotype_shortcut::register(&app, &settings.auto_type_toggle_shortcut)?;
     for (shortcut, mode) in active_dictation_shortcuts(&settings) {
         if !is_dictation_shortcut_registered(&app, &shortcut)? {
             register_dictation_shortcut_for_mode(&app, &shortcut, mode)?;
@@ -3450,6 +3453,9 @@ fn update_settings(
     if let Some(raw) = patch.cycle_microphone_shortcut.as_mut() {
         *raw = microphone_shortcut::normalize(raw)?;
     }
+    if let Some(raw) = patch.auto_type_toggle_shortcut.as_mut() {
+        *raw = autotype_shortcut::normalize(raw)?;
+    }
     let dictionary_was_patched = patch.dictionary.is_some();
     let (
         previous_settings,
@@ -3474,8 +3480,14 @@ fn update_settings(
     {
         cancel_dictation_runtime(&app)?;
     }
+    autotype_shortcut::validate(&candidate_settings)?;
     apply_launch_at_login_action(&app, launch_at_login_action)?;
     microphone_shortcut::reconcile(&app, &previous_settings, &candidate_settings)?;
+    if let Err(error) = autotype_shortcut::reconcile(&app, &candidate_settings) {
+        let cycle_restore =
+            microphone_shortcut::reconcile(&app, &candidate_settings, &previous_settings);
+        return Err(format!("{error}; restore: cycle={cycle_restore:?}"));
+    }
 
     let (settings, live_event_handler, live_events) = {
         let mut backend = state.lock().map_err(|error| error.to_string())?;
@@ -3486,7 +3498,8 @@ fn update_settings(
                     &app,
                     &candidate_settings,
                     &previous_settings,
-                );
+                )
+                .and(autotype_shortcut::reconcile(&app, &previous_settings));
                 let launch_rollback = apply_launch_at_login_action(
                     &app,
                     launch_at_login_action_for_patch(
@@ -9192,6 +9205,7 @@ fn main() {
             app.manage(dictation_shortcut_dispatcher);
             app.manage(DictationShortcutSuspension::default());
             app.manage(microphone_shortcut::Runtime::default());
+            app.manage(autotype_shortcut::Runtime::default());
             app.manage(modifier_shortcut_state.clone());
             app.manage(live_transcriber_state.clone());
             app.manage(AutoTypeState::default());
@@ -9245,6 +9259,11 @@ fn main() {
                 .and_then(|_| microphone_shortcut::register(app.handle(), &initial_settings_for_runtime.cycle_microphone_shortcut))
             {
                 eprintln!("[microphone-cycle] startup shortcut registration failed: {error}");
+            }
+            if let Err(error) = autotype_shortcut::validate(&initial_settings_for_runtime)
+                .and_then(|_| autotype_shortcut::register(app.handle(), &initial_settings_for_runtime.auto_type_toggle_shortcut))
+            {
+                eprintln!("[auto-type-toggle] startup shortcut registration failed: {error}");
             }
 
             let startup_recovery_cutoff = chrono::Utc::now();
@@ -9386,6 +9405,7 @@ fn main() {
             wakenote::quick_audio::quick_audio_history,
             microphone_shortcut::cycle_primary_microphone,
             microphone_shortcut::microphone_cycle_notice,
+            autotype_shortcut::toggle_auto_type,
             app_updater::check_for_update,
             app_updater::update_install_readiness,
             app_updater::open_update_release,

@@ -5,6 +5,7 @@ import {
   formatDictationShortcut,
   normalizeDictationShortcut,
   normalizeCycleMicrophoneShortcut,
+  normalizeAutoTypeToggleShortcut,
   validateDictationHotkeys,
 } from "./dictation-shortcut";
 import { defaultSettings } from "./app-state";
@@ -20,6 +21,23 @@ describe("Primary microphone cycle shortcut", () => {
     const settings = { ...defaultSettings(), dictation_enabled: true, dictation_shortcut: "ctrl+shift" };
     expect(() => validateDictationHotkeys(settings)).toThrow(/Cycle Primary microphone.*overlaps/);
     expect(() => validateDictationHotkeys({ ...settings, cycle_microphone_shortcut: "" })).not.toThrow();
+  });
+});
+
+describe("Auto-type toggle shortcut", () => {
+  it("is off by default and normalizes a keyed chord", () => {
+    expect(defaultSettings().auto_type_toggle_shortcut).toBe("");
+    expect(normalizeAutoTypeToggleShortcut(" Shift + Control + A ")).toBe("ctrl+shift+a");
+    expect(normalizeAutoTypeToggleShortcut(" ")).toBe("");
+    expect(() => normalizeAutoTypeToggleShortcut("ctrl+shift")).toThrow();
+    expect(() => normalizeAutoTypeToggleShortcut("a")).toThrow();
+  });
+  it("rejects overlap with the microphone cycle chord", () => {
+    const settings = { ...defaultSettings(), auto_type_toggle_shortcut: "ctrl+shift+m" };
+    expect(() => validateDictationHotkeys(settings)).toThrow(/Auto-type toggle.*overlaps/);
+    expect(() =>
+      validateDictationHotkeys({ ...settings, auto_type_toggle_shortcut: "ctrl+shift+a" }),
+    ).not.toThrow();
   });
 });
 

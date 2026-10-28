@@ -5,6 +5,7 @@ import {
   normalizeDictationShortcut,
   normalizeEnhancedPromptShortcut,
   normalizeCycleMicrophoneShortcut,
+  normalizeAutoTypeToggleShortcut,
   validateDictationHotkeys,
 } from "./dictation-shortcut";
 import { modelSupportsReprocessing } from "./models";
@@ -892,6 +893,9 @@ export async function saveSettingsPatch(
     }
     if (typeof safePatch.cycle_microphone_shortcut === "string") {
       safePatch.cycle_microphone_shortcut = normalizeCycleMicrophoneShortcut(safePatch.cycle_microphone_shortcut);
+    }
+    if (typeof safePatch.auto_type_toggle_shortcut === "string") {
+      safePatch.auto_type_toggle_shortcut = normalizeAutoTypeToggleShortcut(safePatch.auto_type_toggle_shortcut);
     }
     let queue = browserSnapshot.queue ?? emptyQueue();
     if (

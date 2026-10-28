@@ -750,6 +750,7 @@ export default function App() {
           selectedModelId={snapshot.settings.selected_model}
           autoPlayNext={snapshot.settings.autoplay_next_transcript}
           openrouterKeyConfigured={snapshot.openrouter_key_configured}
+          voiceGate={snapshot.settings.voice_gate_enabled}
           onOpenReports={() => setActiveRoute("reports")}
         />
       </WorkspacePage>
