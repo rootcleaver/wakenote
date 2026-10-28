@@ -43,7 +43,14 @@ fn auto_type_bounds_microphone_chunks_and_snapshots_its_model_without_changing_a
     };
     let mut mic = CaptureController::new(config(ChunkSource::Microphone));
     let mut system = CaptureController::new(config(ChunkSource::System));
+    // Continuous speech past the five-second soft limit is not cut mid-word...
     for _ in 0..65 {
+        mic.process_samples(&[0.8], 100).unwrap();
+        system.process_samples(&[0.8], 100).unwrap();
+    }
+    assert!(mic.completed_chunks().is_empty());
+    // ...but the chunk is still bounded by the hard limit (soft limit + grace).
+    for _ in 65..90 {
         mic.process_samples(&[0.8], 100).unwrap();
         system.process_samples(&[0.8], 100).unwrap();
     }

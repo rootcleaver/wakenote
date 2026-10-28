@@ -1,6 +1,7 @@
 use chrono::{TimeZone, Utc};
 use wakenote::audio::{
-    GateConfig, GateDecision, MicHealthConfig, SpeechGate, TOP_PRIORITY_RECHECK, dbfs_from_rms,
+    GateConfig, GateDecision, MicHealthConfig, ROLLOVER_PAUSE_MS, SpeechGate, TOP_PRIORITY_RECHECK,
+    dbfs_from_rms,
     input_devices_from_labels,
 };
 use wakenote::commands::{AppBackend, pinned_device_mismatch};
@@ -45,6 +46,7 @@ fn speech_gate_rejects_transient_spikes_shorter_than_attack() {
         post_roll_ms: 300,
         min_chunk_ms: 500,
         max_chunk_ms: 30_000,
+        rollover_grace_ms: 0,
     });
 
     assert_eq!(gate.observe(-80.0, 0), GateDecision::Idle);
@@ -63,6 +65,7 @@ fn speech_gate_starts_after_attack_and_ends_after_release() {
         post_roll_ms: 300,
         min_chunk_ms: 500,
         max_chunk_ms: 30_000,
+        rollover_grace_ms: 0,
     });
 
     assert_eq!(gate.observe(-30.0, 0), GateDecision::Idle);
@@ -91,6 +94,7 @@ fn speech_gate_rolls_over_at_max_chunk_length_without_stopping() {
         post_roll_ms: 300,
         min_chunk_ms: 500,
         max_chunk_ms: 1_000,
+        rollover_grace_ms: 0,
     });
 
     assert_eq!(gate.observe(-30.0, 0), GateDecision::Idle);
@@ -106,6 +110,70 @@ fn speech_gate_rolls_over_at_max_chunk_length_without_stopping() {
         }
     );
     assert!(gate.is_recording());
+}
+
+#[test]
+fn speech_gate_with_rollover_grace_waits_for_a_pause_after_max_chunk_length() {
+    let mut gate = SpeechGate::new(GateConfig {
+        threshold_dbfs: -45.0,
+        attack_ms: 100,
+        release_ms: 750,
+        pre_roll_ms: 0,
+        post_roll_ms: 0,
+        min_chunk_ms: 500,
+        max_chunk_ms: 1_000,
+        rollover_grace_ms: 3_000,
+    });
+
+    assert_eq!(gate.observe(-30.0, 0), GateDecision::Idle);
+    assert_eq!(
+        gate.observe(-30.0, 100),
+        GateDecision::Start { started_at_ms: 0 }
+    );
+    // Past the soft limit while still speaking: keep the word together.
+    assert_eq!(gate.observe(-30.0, 1_100), GateDecision::Recording);
+    // A dip shorter than the pause span does not cut.
+    assert_eq!(gate.observe(-80.0, 1_200), GateDecision::Recording);
+    assert_eq!(gate.observe(-80.0, 1_250), GateDecision::Recording);
+    assert_eq!(gate.observe(-30.0, 1_300), GateDecision::Recording);
+    // A pause of ROLLOVER_PAUSE_MS rolls over inside the quiet span.
+    assert_eq!(gate.observe(-80.0, 1_400), GateDecision::Recording);
+    assert_eq!(
+        gate.observe(-80.0, 1_400 + ROLLOVER_PAUSE_MS),
+        GateDecision::Rollover {
+            ended_at_ms: 1_400 + ROLLOVER_PAUSE_MS,
+            next_started_at_ms: 1_400 + ROLLOVER_PAUSE_MS
+        }
+    );
+    assert!(gate.is_recording());
+}
+
+#[test]
+fn speech_gate_with_rollover_grace_still_cuts_at_the_hard_limit() {
+    let mut gate = SpeechGate::new(GateConfig {
+        threshold_dbfs: -45.0,
+        attack_ms: 100,
+        release_ms: 750,
+        pre_roll_ms: 0,
+        post_roll_ms: 0,
+        min_chunk_ms: 500,
+        max_chunk_ms: 1_000,
+        rollover_grace_ms: 3_000,
+    });
+
+    assert_eq!(gate.observe(-30.0, 0), GateDecision::Idle);
+    assert_eq!(
+        gate.observe(-30.0, 100),
+        GateDecision::Start { started_at_ms: 0 }
+    );
+    assert_eq!(gate.observe(-30.0, 3_999), GateDecision::Recording);
+    assert_eq!(
+        gate.observe(-30.0, 4_000),
+        GateDecision::Rollover {
+            ended_at_ms: 4_000,
+            next_started_at_ms: 4_000
+        }
+    );
 }
 
 #[test]

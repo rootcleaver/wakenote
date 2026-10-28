@@ -19,7 +19,13 @@ pub struct GateConfig {
     pub post_roll_ms: u64,
     pub min_chunk_ms: u64,
     pub max_chunk_ms: u64,
+    /// After `max_chunk_ms`, wait up to this long for a short pause before the
+    /// rollover so the cut does not split a word. 0 = cut exactly at `max_chunk_ms`.
+    pub rollover_grace_ms: u64,
 }
+
+/// Quiet span that counts as a pause between words when a rollover is waiting for one.
+pub const ROLLOVER_PAUSE_MS: u64 = 120;
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct LevelSnapshot {
@@ -214,7 +220,18 @@ impl SpeechGate {
         }
 
         let chunk_started_at_ms = self.chunk_started_at_ms.unwrap_or(time_ms);
-        if time_ms.saturating_sub(chunk_started_at_ms) >= self.config.max_chunk_ms {
+        let elapsed_ms = time_ms.saturating_sub(chunk_started_at_ms);
+        let in_pause = !above_threshold
+            && self
+                .below_since_ms
+                .is_some_and(|since| time_ms.saturating_sub(since) >= ROLLOVER_PAUSE_MS);
+        let hard_limit_ms = self
+            .config
+            .max_chunk_ms
+            .saturating_add(self.config.rollover_grace_ms);
+        if elapsed_ms >= self.config.max_chunk_ms
+            && (self.config.rollover_grace_ms == 0 || in_pause || elapsed_ms >= hard_limit_ms)
+        {
             self.chunk_started_at_ms = Some(time_ms);
             self.below_since_ms = None;
             self.post_roll_deadline_ms = None;

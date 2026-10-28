@@ -211,6 +211,7 @@ impl CaptureProcessor {
             post_roll_ms: config.settings.post_roll_ms,
             min_chunk_ms: config.settings.min_chunk_ms,
             max_chunk_ms: config.settings.max_chunk_ms,
+            rollover_grace_ms: rollover_grace_ms(&config),
         });
 
         Self {
@@ -372,6 +373,7 @@ impl CaptureProcessor {
             post_roll_ms: self.config.settings.post_roll_ms,
             min_chunk_ms: self.config.settings.min_chunk_ms,
             max_chunk_ms: self.config.settings.max_chunk_ms,
+            rollover_grace_ms: rollover_grace_ms(&self.config),
         });
         self.pre_roll.clear();
         self.active_samples.clear();
@@ -534,6 +536,19 @@ fn offset_from_base_ms(base_time: DateTime<Utc>, captured_at: DateTime<Utc>) -> 
         .unwrap_or(0)
 }
 
+/// Auto-type microphone chunks are capped at five seconds; give a phrase up to
+/// three more seconds to reach a pause so the cut does not split a word. The
+/// hard limit (8 s plus pre-roll) stays inside the ten-second live decoder window.
+const AUTO_TYPE_ROLLOVER_GRACE_MS: u64 = 3_000;
+
+fn rollover_grace_ms(config: &CaptureProcessorConfig) -> u64 {
+    if config.settings.auto_transcript_input_enabled && config.source == ChunkSource::Microphone {
+        AUTO_TYPE_ROLLOVER_GRACE_MS
+    } else {
+        0
+    }
+}
+
 fn processor_config(config: &CaptureControllerConfig) -> CaptureProcessorConfig {
     let mut settings = config.settings.clone();
     if settings.auto_transcript_input_enabled && config.source == ChunkSource::Microphone {
@@ -680,6 +695,31 @@ mod tests {
             "started_at {} must not exceed the latest wall-clock {last_captured_at}",
             metadata.started_at
         );
+    }
+
+    #[test]
+    fn rollover_grace_only_applies_to_auto_type_microphone_chunks() {
+        let config = |auto_type: bool, source: ChunkSource| CaptureProcessorConfig {
+            save_root: std::path::PathBuf::new(),
+            settings: AppSettings {
+                auto_transcript_input_enabled: auto_type,
+                ..settings()
+            },
+            sample_rate: 10,
+            device_id: "mic".to_string(),
+            device_name: "Mic".to_string(),
+            used_fallback_device: false,
+            base_time: Utc.with_ymd_and_hms(2026, 5, 6, 23, 7, 9).unwrap(),
+            app_version: "0.1.0".to_string(),
+            source,
+            source_label: None,
+        };
+        assert_eq!(
+            rollover_grace_ms(&config(true, ChunkSource::Microphone)),
+            AUTO_TYPE_ROLLOVER_GRACE_MS
+        );
+        assert_eq!(rollover_grace_ms(&config(false, ChunkSource::Microphone)), 0);
+        assert_eq!(rollover_grace_ms(&config(true, ChunkSource::System)), 0);
     }
 
     #[test]
