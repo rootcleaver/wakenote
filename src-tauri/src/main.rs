@@ -945,6 +945,10 @@ struct LiveFinalPayload {
     /// Voice gate verdict: "me" | "other" | "unknown"; absent when the gate is off.
     speaker: Option<wakenote::voice_gate::SpeakerKind>,
     speaker_score: Option<f32>,
+    /// Similarity to the closest "Not me" phrase, when any were marked.
+    speaker_other_score: Option<f32>,
+    /// Why the gate could not judge (too short, model missing, …).
+    speaker_reason: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -8280,7 +8284,9 @@ async fn voice_gate_enroll(
     app: AppHandle,
     state: State<'_, BackendState>,
     audio_path: String,
+    not_me: Option<bool>,
 ) -> Result<wakenote::voice_gate::VoiceGateStatus, String> {
+    let not_me = not_me.unwrap_or(false);
     let (model_dir, save_root) = {
         let backend = state.lock().map_err(|error| error.to_string())?;
         let settings = backend.settings();
@@ -8300,7 +8306,11 @@ async fn voice_gate_enroll(
         return Err("Only recordings inside the WakeNote save folder can be enrolled.".into());
     }
     tauri::async_runtime::spawn_blocking(move || -> Result<wakenote::voice_gate::VoiceGateStatus, String> {
-        wakenote::voice_gate::enroll(&app_data_dir, &model_dir, &audio)?;
+        if not_me {
+            wakenote::voice_gate::enroll_other(&app_data_dir, &model_dir, &audio)?;
+        } else {
+            wakenote::voice_gate::enroll(&app_data_dir, &model_dir, &audio)?;
+        }
         Ok(wakenote::voice_gate::status(&app_data_dir, &model_dir))
     })
     .await
@@ -8442,6 +8452,8 @@ fn emit_outcome_to_frontend(
                     text,
                     speaker: verdict.as_ref().map(|v| v.kind.clone()),
                     speaker_score: verdict.as_ref().and_then(|v| v.score),
+                    speaker_other_score: verdict.as_ref().and_then(|v| v.other_score),
+                    speaker_reason: verdict.as_ref().and_then(|v| v.reason.clone()),
                 },
             ) {
                 eprintln!("[wakenote] WARN emit final failed: {error}");

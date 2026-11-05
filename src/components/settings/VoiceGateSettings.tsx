@@ -104,7 +104,9 @@ export function VoiceGateSettings({
           <FieldDescription>
             {enrolled === 0
               ? "Not enrolled. Turn the gate on, speak a few phrases alone, then press “This is me” on 3–5 of them in the Capture list."
-              : `${enrolled} phrase${enrolled === 1 ? "" : "s"} enrolled. Add more from the Capture list to improve matching.`}
+              : `${enrolled} phrase${enrolled === 1 ? "" : "s"} enrolled${
+                  status?.others ? ` · ${status.others} marked Not me` : ""
+                }. Add more from the Capture or Live copy list to improve matching.`}
           </FieldDescription>
           {error ? <FieldDescription>{error}</FieldDescription> : null}
         </FieldContent>

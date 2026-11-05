@@ -9,6 +9,11 @@ import {
 } from "react";
 import { Button } from "@/components/ui/button";
 import { shouldCopySelectedTranscriptsOnKeydown } from "@/components/TranscriptsView";
+import {
+  VoiceMarkButtons,
+  speakerTag,
+  useVoiceMarks,
+} from "@/components/capture/LiveTranscriptList";
 import { formatLocalTimestamp } from "@/lib/transcript-history";
 import type { TranscriptEntry } from "@/lib/transcript-log";
 
@@ -70,12 +75,18 @@ export function LiveCopyPage({
   busy,
   onStart,
   onStop,
+  voiceGate = false,
+  voiceGateThreshold,
 }: {
   entries: readonly TranscriptEntry[];
   liveActive: boolean;
   busy: boolean;
   onStart: () => void;
   onStop: () => void;
+  /** Show the voice gate verdict and the "This is me" / "Not me" actions. */
+  voiceGate?: boolean;
+  /** Match threshold shown next to the scores. */
+  voiceGateThreshold?: number;
 }) {
   const visible = useMemo(() => liveCopyEntries(entries), [entries]);
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
@@ -84,6 +95,8 @@ export function LiveCopyPage({
   const anchorRef = useRef<string | null>(null);
   const dragRef = useRef<{ mode: DragMode; visited: Set<string> } | null>(null);
   const listRef = useRef<HTMLOListElement | null>(null);
+  const voice = useVoiceMarks();
+  const enrollError = voice.error;
 
   // Drop selections whose phrase is no longer on screen.
   useEffect(() => {
@@ -289,6 +302,10 @@ export function LiveCopyPage({
                   {entry.status === "final"
                     ? formatLocalTimestamp(entry.recorded_at || entry.started_at) || "Final"
                     : STATUS_LABEL[entry.status]}
+                  {voiceGate
+                    ? speakerTag(entry, voice.markFor(entry), voiceGateThreshold)
+                    : null}
+                  {voiceGate ? <VoiceMarkButtons entry={entry} voice={voice} /> : null}
                 </span>
                 <span className="live-copy__text">{entry.text}</span>
               </li>
@@ -296,6 +313,11 @@ export function LiveCopyPage({
           })}
         </ol>
       )}
+      {voiceGate && enrollError ? (
+        <p className="live-copy__empty" role="alert">
+          Voice enroll: {enrollError}
+        </p>
+      ) : null}
       {!follow && visible.length > 0 ? (
         <Button
           type="button"

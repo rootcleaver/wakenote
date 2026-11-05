@@ -29,6 +29,10 @@ export interface TranscriptEntry {
   /** Voice gate verdict on the final chunk; absent when the gate is off. */
   speaker?: SpeakerKind | null;
   speaker_score?: number | null;
+  /** Similarity to the closest "Not me" phrase. */
+  speaker_other_score?: number | null;
+  /** Why the gate left the phrase unjudged. */
+  speaker_reason?: string | null;
 }
 
 export type SpeakerKind = "me" | "other" | "unknown";
@@ -50,6 +54,8 @@ export type TranscriptEvent =
       recorded_at?: string;
       speaker?: SpeakerKind | null;
       speaker_score?: number | null;
+      speaker_other_score?: number | null;
+      speaker_reason?: string | null;
     } & SourceIdentity)
   | ({
       type: "failed";
@@ -151,6 +157,8 @@ export function reduceTranscriptLog(
             error: null,
             speaker: event.speaker ?? null,
             speaker_score: event.speaker_score ?? null,
+            speaker_other_score: event.speaker_other_score ?? null,
+            speaker_reason: event.speaker_reason ?? null,
           };
         },
       );

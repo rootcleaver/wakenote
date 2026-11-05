@@ -275,12 +275,15 @@ export interface VoiceGateStatus {
   model_ready: boolean;
   runtime_available: boolean;
   enrolled: number;
+  /** Phrases marked "Not me". Older backends omit it. */
+  others?: number;
 }
 
 let browserVoiceGate: VoiceGateStatus = {
   model_ready: false,
   runtime_available: false,
   enrolled: 0,
+  others: 0,
 };
 
 export async function loadVoiceGateStatus(): Promise<VoiceGateStatus> {
@@ -296,20 +299,26 @@ export async function downloadVoiceGateModel(): Promise<VoiceGateStatus> {
   return invoke<VoiceGateStatus>("voice_gate_download_model");
 }
 
-export async function enrollVoiceGate(audioPath: string): Promise<VoiceGateStatus> {
+/**
+ * Teach the voice gate from one recorded phrase: `notMe` false adds it to your
+ * enrolled voice ("This is me"), true remembers it as someone else ("Not me").
+ */
+export async function enrollVoiceGate(
+  audioPath: string,
+  { notMe = false }: { notMe?: boolean } = {},
+): Promise<VoiceGateStatus> {
   if (!isTauriRuntime()) {
-    browserVoiceGate = {
-      ...browserVoiceGate,
-      enrolled: browserVoiceGate.enrolled + 1,
-    };
+    browserVoiceGate = notMe
+      ? { ...browserVoiceGate, others: (browserVoiceGate.others ?? 0) + 1 }
+      : { ...browserVoiceGate, enrolled: browserVoiceGate.enrolled + 1 };
     return browserVoiceGate;
   }
-  return invoke<VoiceGateStatus>("voice_gate_enroll", { audioPath });
+  return invoke<VoiceGateStatus>("voice_gate_enroll", { audioPath, notMe });
 }
 
 export async function resetVoiceGate(): Promise<VoiceGateStatus> {
   if (!isTauriRuntime()) {
-    browserVoiceGate = { ...browserVoiceGate, enrolled: 0 };
+    browserVoiceGate = { ...browserVoiceGate, enrolled: 0, others: 0 };
     return browserVoiceGate;
   }
   return invoke<VoiceGateStatus>("voice_gate_reset");

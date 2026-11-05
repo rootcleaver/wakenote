@@ -334,6 +334,8 @@ export default function App() {
               recorded_at?: string;
               speaker?: "me" | "other" | "unknown" | null;
               speaker_score?: number | null;
+              speaker_other_score?: number | null;
+              speaker_reason?: string | null;
             };
             return {
               type: "final",
@@ -346,6 +348,8 @@ export default function App() {
               recorded_at: data.recorded_at,
               speaker: data.speaker ?? null,
               speaker_score: data.speaker_score ?? null,
+              speaker_other_score: data.speaker_other_score ?? null,
+              speaker_reason: data.speaker_reason ?? null,
             };
           },
         ],
@@ -714,6 +718,8 @@ export default function App() {
         busy={busy}
         onStart={() => void runPermissionAction("live_input", startLiveCapture)}
         onStop={() => void runAction(stopLiveCapture)}
+        voiceGate={snapshot.settings.voice_gate_enabled}
+        voiceGateThreshold={snapshot.settings.voice_gate_threshold}
       />
     ),
     meetings: (

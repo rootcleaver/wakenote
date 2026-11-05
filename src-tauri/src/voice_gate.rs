@@ -19,6 +19,8 @@ pub const PROFILE_FILE: &str = "voice-gate.json";
 pub const DEFAULT_THRESHOLD: f32 = 0.45;
 /// Chunks shorter than this carry too little voice to judge; they pass through.
 pub const MIN_SAMPLES_16K: usize = 16_000;
+/// How many "Not me" phrases the profile keeps (oldest drop first).
+pub const MAX_OTHER_SAMPLES: usize = 64;
 const SAMPLE_RATE: u32 = 16_000;
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -27,6 +29,10 @@ pub struct VoiceProfile {
     pub enrolled: u32,
     #[serde(default)]
     pub updated_at: String,
+    /// Unit-length embeddings of phrases the user marked "Not me". Kept apart
+    /// (not averaged) because they can come from several different people.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub others: Vec<Vec<f32>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -40,7 +46,10 @@ pub enum SpeakerKind {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct SpeakerVerdict {
     pub kind: SpeakerKind,
+    /// Similarity to the enrolled voice ("This is me" phrases).
     pub score: Option<f32>,
+    /// Similarity to the closest "Not me" phrase; `None` until one is marked.
+    pub other_score: Option<f32>,
     pub reason: Option<String>,
 }
 
@@ -49,6 +58,7 @@ impl SpeakerVerdict {
         Self {
             kind: SpeakerKind::Unknown,
             score: None,
+            other_score: None,
             reason: Some(reason.into()),
         }
     }
@@ -63,6 +73,7 @@ pub struct VoiceGateStatus {
     pub model_ready: bool,
     pub runtime_available: bool,
     pub enrolled: u32,
+    pub others: u32,
 }
 
 fn normalized(values: &[f32]) -> Vec<f32> {
@@ -107,19 +118,54 @@ impl VoiceProfile {
         Ok(())
     }
 
+    /// Remember a phrase the user marked as someone else's voice.
+    pub fn add_other(&mut self, embedding: &[f32]) -> Result<(), String> {
+        let unit = normalized(embedding);
+        if let Some(first) = self.others.first()
+            && first.len() != unit.len()
+        {
+            return Err("Speaker model changed; reset the voice enrollment first.".into());
+        }
+        if !self.embedding.is_empty() && self.embedding.len() != unit.len() {
+            return Err("Speaker model changed; reset the voice enrollment first.".into());
+        }
+        self.others.push(unit);
+        if self.others.len() > MAX_OTHER_SAMPLES {
+            let excess = self.others.len() - MAX_OTHER_SAMPLES;
+            self.others.drain(..excess);
+        }
+        self.updated_at = chrono::Utc::now().to_rfc3339();
+        Ok(())
+    }
+
+    /// Closest "Not me" phrase, if any were marked.
+    fn nearest_other(&self, embedding: &[f32]) -> Option<f32> {
+        self.others
+            .iter()
+            .map(|other| cosine(other, embedding))
+            .fold(None, |best, score| Some(best.map_or(score, |b: f32| b.max(score))))
+    }
+
+    /// Me when the phrase clears the threshold against the enrolled voice AND is
+    /// closer to it than to every phrase marked "Not me". `score` stays the
+    /// similarity to the enrolled voice.
     pub fn decide(&self, embedding: &[f32], threshold: f32) -> SpeakerVerdict {
         if self.enrolled == 0 || self.embedding.is_empty() {
             return SpeakerVerdict::unknown("no enrolled voice");
         }
         let score = cosine(&self.embedding, embedding);
+        let other = self.nearest_other(embedding);
+        let me = score >= threshold && other.is_none_or(|o| score >= o);
         SpeakerVerdict {
-            kind: if score >= threshold {
-                SpeakerKind::Me
-            } else {
-                SpeakerKind::Other
-            },
+            kind: if me { SpeakerKind::Me } else { SpeakerKind::Other },
             score: Some(score),
-            reason: None,
+            other_score: other,
+            reason: match other {
+                Some(o) if !me && score >= threshold => {
+                    Some(format!("closer to a Not me phrase ({o:.2})"))
+                }
+                _ => None,
+            },
         }
     }
 }
@@ -165,6 +211,9 @@ pub fn status(app_data_dir: &Path, model_directory: &Path) -> VoiceGateStatus {
         model_ready: model_ready(model_directory),
         runtime_available: runtime_available(),
         enrolled: load_profile(app_data_dir).map(|p| p.enrolled).unwrap_or(0),
+        others: load_profile(app_data_dir)
+            .map(|p| p.others.len() as u32)
+            .unwrap_or(0),
     }
 }
 
@@ -284,6 +333,19 @@ pub fn enroll(app_data_dir: &Path, model_directory: &Path, audio_path: &Path) ->
     Ok(profile.enrolled)
 }
 
+/// Add a chunk the user marked as someone else's voice ("Not me").
+pub fn enroll_other(
+    app_data_dir: &Path,
+    model_directory: &Path,
+    audio_path: &Path,
+) -> Result<u32, String> {
+    let embedding = embedding_for_audio(model_directory, audio_path)?;
+    let mut profile = load_profile(app_data_dir).unwrap_or_default();
+    profile.add_other(&embedding)?;
+    save_profile(app_data_dir, &profile)?;
+    Ok(profile.others.len() as u32)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -294,6 +356,38 @@ mod tests {
         assert!(cosine(&[1.0, 0.0], &[0.0, 1.0]).abs() < 1e-6);
         assert_eq!(cosine(&[1.0], &[1.0, 0.0]), 0.0);
         assert_eq!(cosine(&[0.0, 0.0], &[1.0, 0.0]), 0.0);
+    }
+
+    #[test]
+    fn not_me_phrases_pull_close_calls_to_other() {
+        let mut profile = VoiceProfile::default();
+        profile.add(&[1.0, 0.0]).unwrap();
+        // 0.8 similar to me: Me while nothing is marked Not me.
+        let probe = [0.8, 0.6];
+        assert_eq!(profile.decide(&probe, 0.45).kind, SpeakerKind::Me);
+        // A Not me phrase that is farther (0.6) leaves it Me.
+        profile.add_other(&[0.0, 1.0]).unwrap();
+        assert_eq!(profile.decide(&probe, 0.45).kind, SpeakerKind::Me);
+        // A Not me phrase that is closer (0.96) than the enrolled voice (0.8) flips it.
+        profile.add_other(&[0.6, 0.8]).unwrap();
+        let verdict = profile.decide(&probe, 0.45);
+        assert_eq!(verdict.kind, SpeakerKind::Other);
+        assert!((verdict.score.unwrap() - 0.8).abs() < 1e-5);
+        assert!((verdict.other_score.unwrap() - 0.96).abs() < 1e-5);
+        assert!(verdict.reason.unwrap().contains("Not me"));
+    }
+
+    #[test]
+    fn not_me_list_is_capped_and_old_profiles_still_load() {
+        let mut profile = VoiceProfile::default();
+        for i in 0..(MAX_OTHER_SAMPLES + 5) {
+            profile.add_other(&[1.0, i as f32]).unwrap();
+        }
+        assert_eq!(profile.others.len(), MAX_OTHER_SAMPLES);
+        let old: VoiceProfile =
+            serde_json::from_str(r#"{"embedding":[1.0,0.0],"enrolled":1,"updated_at":""}"#).unwrap();
+        assert!(old.others.is_empty());
+        assert_eq!(old.decide(&[1.0, 0.0], 0.45).kind, SpeakerKind::Me);
     }
 
     #[test]
