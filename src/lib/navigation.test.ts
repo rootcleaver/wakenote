@@ -5,6 +5,7 @@ describe("navigation", () => {
   it("keeps Meetings and Transcripts as separate primary destinations", () => {
     expect(PRIMARY_NAV.map((item) => item.id)).toEqual([
       "capture",
+      "live",
       "meetings",
       "transcripts",
       "reports",

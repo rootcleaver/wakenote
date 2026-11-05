@@ -1,5 +1,6 @@
 export type PrimaryRoute =
   | "capture"
+  | "live"
   | "meetings"
   | "transcripts"
   | "reports"
@@ -20,6 +21,7 @@ export type SettingsSection =
 
 export const PRIMARY_NAV = [
   { id: "capture", label: "Capture" },
+  { id: "live", label: "Live copy" },
   { id: "meetings", label: "Meetings" },
   { id: "transcripts", label: "Transcripts" },
   { id: "reports", label: "Reports" },

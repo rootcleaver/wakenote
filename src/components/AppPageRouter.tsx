@@ -11,6 +11,8 @@ export function AppPageRouter({
   switch (route) {
     case "capture":
       return pages.capture;
+    case "live":
+      return pages.live;
     case "meetings":
       return pages.meetings;
     case "transcripts":

@@ -8,6 +8,7 @@ import { WebhooksPanel } from "./components/WebhooksPanel";
 import { ReportHistoryPanel } from "./components/ReportHistoryPanel";
 import { TranscriptsPanel } from "./components/TranscriptsPanel";
 import { CapturePage } from "./components/capture/CapturePage";
+import { LiveCopyPage } from "./components/live/LiveCopyPage";
 import { AppFrame } from "./components/shell/AppFrame";
 import { PageHeader } from "./components/shell/PageHeader";
 import { RecordingStatusRail } from "./components/shell/RecordingStatusRail";
@@ -704,6 +705,15 @@ export default function App() {
         onRefresh={() => void refresh()}
         onPatch={(patch) => void patchSettings(patch)}
         onOpenAudioSettings={() => openSettings("audio")}
+      />
+    ),
+    live: (
+      <LiveCopyPage
+        entries={transcriptEntries}
+        liveActive={snapshot.status.live_input_active}
+        busy={busy}
+        onStart={() => void runPermissionAction("live_input", startLiveCapture)}
+        onStop={() => void runAction(stopLiveCapture)}
       />
     ),
     meetings: (

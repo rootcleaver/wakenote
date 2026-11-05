@@ -2,6 +2,7 @@ import {
   ActivityIcon,
   AudioWaveformIcon,
   CalendarClockIcon,
+  ClipboardCopyIcon,
   FilesIcon,
   FileTextIcon,
   Settings2Icon,
@@ -22,6 +23,7 @@ import {
 
 const NAV_ICONS: Record<(typeof PRIMARY_NAV)[number]["id"], LucideIcon> = {
   capture: AudioWaveformIcon,
+  live: ClipboardCopyIcon,
   meetings: CalendarClockIcon,
   transcripts: FilesIcon,
   reports: FileTextIcon,

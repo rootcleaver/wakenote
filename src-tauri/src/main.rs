@@ -854,7 +854,7 @@ const MAIN_WINDOW_TITLE: &str = "WakeNote";
 const CLOSE_SETTINGS_WINDOW_MENU_ID: &str = "close-settings-window";
 const MAIN_WINDOW_WIDTH: f64 = 1040.0;
 const MAIN_WINDOW_HEIGHT: f64 = 922.0;
-const MAIN_WINDOW_MIN_WIDTH: f64 = 980.0;
+const MAIN_WINDOW_MIN_WIDTH: f64 = 480.0;
 const MAIN_WINDOW_MIN_HEIGHT: f64 = 640.0;
 /// How long we wait for cpal's `host.input_devices()` enumeration to
 /// finish before giving up with "audio device lookup did not finish

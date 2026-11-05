@@ -7,10 +7,10 @@ const config = JSON.parse(
 );
 
 describe("main window responsive boundary", () => {
-  it("allows resizing down to the supported 760x640 compact viewport", () => {
+  it("allows resizing down to the supported 480x640 quarter-screen viewport", () => {
     const mainWindow = config.app.windows[0];
 
-    expect(mainWindow.minWidth).toBe(760);
+    expect(mainWindow.minWidth).toBe(480);
     expect(mainWindow.minHeight).toBe(640);
     expect(mainWindow.resizable).toBe(true);
   });

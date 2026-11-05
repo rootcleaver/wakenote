@@ -15,7 +15,7 @@
         "title": "WakeNote",
         "width": 1040,
         "height": 922,
-        "minWidth": 760,
+        "minWidth": 480,
         "minHeight": 640,
         "resizable": true,
         "visible": false
