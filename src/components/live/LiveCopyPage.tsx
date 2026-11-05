@@ -1,4 +1,4 @@
-import { Check, Copy, PlayIcon, SquareIcon } from "lucide-react";
+import { Check, Copy, Eraser, PlayIcon, SquareIcon } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -51,6 +51,44 @@ export function liveCopyEntries(
   return visible.reverse();
 }
 
+/**
+ * Finished phrases the user cleared off the Live copy screen. View-only: the
+ * transcript log, recordings and voice gate are untouched. Lives outside the
+ * component so switching tabs keeps them cleared; an app restart shows them again.
+ */
+const clearedKeys = new Set<string>();
+
+function isSettled(entry: TranscriptEntry): boolean {
+  return entry.status === "final" || entry.status === "failed";
+}
+
+/** Hide cleared phrases. Phrases still being decoded are never hidden. */
+export function withoutCleared(
+  entries: readonly TranscriptEntry[],
+  cleared: ReadonlySet<string> = clearedKeys,
+): TranscriptEntry[] {
+  return entries.filter(
+    (entry) => !(isSettled(entry) && cleared.has(liveCopyKey(entry))),
+  );
+}
+
+/** Mark every settled phrase on screen as cleared; returns how many were added. */
+export function clearLiveCopy(
+  entries: readonly TranscriptEntry[],
+  cleared: Set<string> = clearedKeys,
+): number {
+  let added = 0;
+  for (const entry of entries) {
+    if (!isSettled(entry)) continue;
+    const key = liveCopyKey(entry);
+    if (!cleared.has(key)) {
+      cleared.add(key);
+      added += 1;
+    }
+  }
+  return added;
+}
+
 /** Text that lands on the clipboard: one phrase per line, in spoken order. */
 export function formatLiveCopy(entries: readonly TranscriptEntry[]): string {
   return entries
@@ -88,7 +126,13 @@ export function LiveCopyPage({
   /** Match threshold shown next to the scores. */
   voiceGateThreshold?: number;
 }) {
-  const visible = useMemo(() => liveCopyEntries(entries), [entries]);
+  const [clearVersion, setClearVersion] = useState(0);
+  const visible = useMemo(
+    () => withoutCleared(liveCopyEntries(entries)),
+    // clearVersion re-runs the filter after Clear.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [entries, clearVersion],
+  );
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
   const [copied, setCopied] = useState<"selected" | "all" | null>(null);
   const [follow, setFollow] = useState(true);
@@ -157,6 +201,14 @@ export function LiveCopyPage({
   const copyAll = useCallback(() => {
     void writeClipboard(formatLiveCopy(visible), "all");
   }, [visible, writeClipboard]);
+
+  const clearScreen = useCallback(() => {
+    clearLiveCopy(visible);
+    setSelected(new Set());
+    anchorRef.current = null;
+    setFollow(true);
+    setClearVersion((version) => version + 1);
+  }, [visible]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -273,6 +325,17 @@ export function LiveCopyPage({
           title="Copy every phrase on screen"
         >
           {copied === "all" ? "Copied" : "All"}
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          disabled={!visible.some(isSettled)}
+          onClick={clearScreen}
+          title="Clear the screen (transcripts and recordings are kept)"
+        >
+          <Eraser data-icon="inline-start" />
+          Clear
         </Button>
       </div>
       {visible.length === 0 ? (
